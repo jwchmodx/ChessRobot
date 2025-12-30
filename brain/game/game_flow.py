@@ -9,6 +9,8 @@ import chess
 from game import game_state
 from game.board_display import display_board
 from cv.cv_detection import detect_move_via_cv, initialize_board_reference, load_chess_pieces
+# TODO: CV 대신 입력으로 변경 - 아래 import 사용
+from cv.player_input import get_move_from_user
 from cv.cv_web import USBCapture, ThreadSafeCapture, start_cv_web_server
 from engine.engine_control import get_stockfish_response_move, make_stockfish_move
 from engine.engine_manager import init_engine, shutdown_engine
@@ -70,6 +72,11 @@ def initialize_game(stockfish_path: str) -> bool:
         print("[✓] 아두이노 타이머 연결 및 모니터링 시작 완료")
         status = get_chess_timer_status()
         print(f"[→] 타이머 상태: {status}")
+        # 타이머가 0이면 초기화
+        timer_manager = get_timer_manager()
+        if timer_manager.black_timer <= 0 or timer_manager.white_timer <= 0:
+            print("[→] 타이머가 0이므로 초기화합니다...")
+            timer_manager.reset_timers()
 
     game_state.chess_pieces_state = load_chess_pieces()
     game_state.cv_turn_color = "white"
@@ -125,26 +132,34 @@ def game_loop() -> None:
             game_state.game_over = True
             break
 
-        button_signal = _poll_timer_button()
-        if not button_signal:
-            time.sleep(0.1)
-            continue
-
         display_board()
         print(
-            f"[DEBUG] 버튼 신호 감지 후 상태 - 차례: "
+            f"[DEBUG] 현재 상태 - 차례: "
             f"{'백' if game_state.current_board.turn == chess.WHITE else '흑'}, "
             f"FEN: {game_state.current_board.fen()}"
         )
 
-        if button_signal == "white_turn_end":
-            print("🔘 플레이어 버튼 감지 - 1초 후 CV 작동 시작")
-            time.sleep(1.0)  # 상대방 착수 후 1초 대기
-            print("🔘 CV 작동 시작")
+        # 흰색 차례일 때는 바로 사용자 입력 받기
+        if game_state.current_board.turn == chess.WHITE:
+            print("🔘 흰색 차례 - 사용자 입력 대기")
             handle_player_turn()
         else:
-            print("⏳ 로봇 측 버튼 감지 - 대기합니다.")
-            time.sleep(0.5)
+            # 검은색 차례일 때는 버튼 신호 기다리기 (로봇 차례)
+            button_signal = _poll_timer_button()
+            if not button_signal:
+                time.sleep(0.1)
+                continue
+
+            if button_signal == "white_turn_end":
+                # TODO: CV 방식 - 주석 처리됨
+                # print("🔘 플레이어 버튼 감지 - 1초 후 CV 작동 시작")
+                # time.sleep(1.0)  # 상대방 착수 후 1초 대기
+                # print("🔘 CV 작동 시작")
+                print("🔘 플레이어 버튼 감지 - 사용자 입력 대기")
+                handle_player_turn()
+            else:
+                print("⏳ 로봇 측 버튼 감지 - 대기합니다.")
+                time.sleep(0.5)
 
         if game_state.game_over:
             break
@@ -164,9 +179,15 @@ def game_loop() -> None:
 def handle_player_turn() -> None:
     """사용자 차례 처리."""
     try:
-        move = detect_move_via_cv()
+        # TODO: CV 방식 - 주석 처리됨
+        # move = detect_move_via_cv()
+        move = get_move_from_user()
     except Exception as exc:
         print(f"[ERROR] 사용자 입력 처리 실패: {exc}")
+        return
+
+    if move == "quit":
+        game_state.game_over = True
         return
 
     if not isinstance(move, chess.Move):
@@ -241,7 +262,9 @@ def apply_detected_move(move: chess.Move) -> None:
         game_state.current_board.push(move)
         game_state.move_count += 1
 
-        print(f"✅ CV 감지된 이동 적용: {move.uci()} (SAN: {san_move})")
+        # TODO: CV 방식 메시지 - 주석 처리됨
+        # print(f"✅ CV 감지된 이동 적용: {move.uci()} (SAN: {san_move})")
+        print(f"✅ 입력된 이동 적용: {move.uci()} (SAN: {san_move})")
 
         wait_until_robot_idle()
 
