@@ -90,8 +90,9 @@ class ChessPieceMLDetector:
             
         Returns:
             8x8 numpy 배열 (0=empty, 1=white, 2=black)
-            - row: a~h (0=a, 7=h)
-            - col: 1~8 (0=1, 7=8)
+            - row: rank 8~1 (0=rank 8, 7=rank 1)
+            - col: file a~h (0=file a, 7=file h)
+            즉, grid[0, 0] = a8, grid[0, 7] = h8, grid[7, 0] = a1, grid[7, 7] = h1
         """
         if self.model is None:
             raise RuntimeError("모델이 로드되지 않았습니다. load_model()을 먼저 호출하세요.")
@@ -130,7 +131,16 @@ class ChessPieceMLDetector:
         for (r, c), pred in zip(coords, preds):
             grid[r, c] = int(pred)
         
-        return grid
+        # CSV 좌표계와 이미지 좌표계 변환
+        # 학습 시 lab[r, c] (체스 file=a+r, rank=c+1)를 이미지 (r, c)에 할당
+        # 추론 시 grid[r, c]는 체스 (file=a+c, rank=8-r)를 의미해야 함
+        # 변환: corrected[r, c] = grid[c, 7-r]
+        corrected_grid = np.zeros((8, 8), dtype=int)
+        for r in range(8):
+            for c in range(8):
+                corrected_grid[r, c] = grid[c, 7 - r]
+        
+        return corrected_grid
     
     def print_grid(self, grid: np.ndarray, title: str = "ML 예측 결과") -> None:
         """
@@ -141,10 +151,12 @@ class ChessPieceMLDetector:
             title: 출력 제목
         """
         print(f"\n[{title}]")
-        print("   " + " ".join([str(i+1) for i in range(8)]))
-        files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+        # 열 헤더: a b c d e f g h
+        print("  " + " ".join(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
+        
         for r in range(8):
-            row_str = f"{files[r]} "
+            rank = 8 - r  # row 0 = rank 8, row 7 = rank 1
+            row_str = f"{rank} "
             for c in range(8):
                 val = grid[r, c]
                 if val == 0:

@@ -8,7 +8,12 @@ import chess
 
 from game import game_state
 from game.board_display import display_board
-from cv.cv_detection import detect_move_via_cv, initialize_board_reference, load_chess_pieces
+from cv.cv_detection import (
+    detect_move_via_cv,
+    detect_move_via_ml_capture,
+    initialize_board_reference,
+    load_chess_pieces,
+)
 # TODO: CV 대신 입력으로 변경 - 아래 import 사용
 from cv.player_input import get_move_from_user
 from cv.cv_web import USBCapture, ThreadSafeCapture, start_cv_web_server
@@ -94,6 +99,20 @@ def initialize_game(stockfish_path: str) -> bool:
     if game_state.cv_capture_wrapper is not None:
         print("[→] 체스판 기준값 초기화(CV) 중...")
         initialize_board_reference()
+        
+        # ML 기물 인식 모델 초기화
+        try:
+            from aicv.ml_piece_detector import ChessPieceMLDetector
+            model_path = str(game_state.BASE_DIR.parent / "aicv" / "models" / "chess_piece_model.pt")
+            if os.path.exists(model_path):
+                game_state.ml_detector = ChessPieceMLDetector(model_path)
+                print(f"[✓] ML 기물 인식 모델 로드 완료: {model_path}")
+            else:
+                print(f"[!] ML 모델 파일을 찾을 수 없습니다: {model_path}")
+        except ImportError:
+            print("[!] PyTorch가 설치되지 않아 ML 기물 인식을 사용할 수 없습니다.")
+        except Exception as exc:
+            print(f"[!] ML 모델 초기화 실패: {exc}")
     else:
         print("[!] 캡처 장치가 없어 체스판 기준값을 초기화할 수 없습니다")
 
@@ -139,27 +158,29 @@ def game_loop() -> None:
             f"FEN: {game_state.current_board.fen()}"
         )
 
-        # 흰색 차례일 때는 바로 사용자 입력 받기
-        if game_state.current_board.turn == chess.WHITE:
-            print("🔘 흰색 차례 - 사용자 입력 대기")
-            handle_player_turn()
+        # 흰색/검은색 차례 모두 엔터 키 입력 대기 (ML CV로 기물 인식)
+        turn_color = "흰색" if game_state.current_board.turn == chess.WHITE else "검은색"
+        
+        if game_state.ml_previous_grid is None:
+            print(f"🔘 {turn_color} 차례 - 기물을 이동한 후 엔터 키를 누르세요")
+            print("   (첫 엔터: 초기 상태와 비교, 이후: 이전 상태와 비교)")
         else:
-            # 검은색 차례일 때는 버튼 신호 기다리기 (로봇 차례)
-            button_signal = _poll_timer_button()
-            if not button_signal:
-                time.sleep(0.1)
-                continue
-
-            if button_signal == "white_turn_end":
-                # TODO: CV 방식 - 주석 처리됨
-                # print("🔘 플레이어 버튼 감지 - 1초 후 CV 작동 시작")
-                # time.sleep(1.0)  # 상대방 착수 후 1초 대기
-                # print("🔘 CV 작동 시작")
-                print("🔘 플레이어 버튼 감지 - 사용자 입력 대기")
-                handle_player_turn()
-            else:
-                print("⏳ 로봇 측 버튼 감지 - 대기합니다.")
-                time.sleep(0.5)
+            print(f"🔘 {turn_color} 차례 - 기물을 이동한 후 엔터 키를 누르세요")
+        print("   (엔터: ML CV 인식, 'q'+엔터: 종료)")
+        
+        try:
+            user_input = input().strip().lower()
+            if user_input in ['q', 'quit', 'exit']:
+                game_state.game_over = True
+                break
+            
+            # 엔터 입력 시 ML CV로 기물 인식
+            print("🔘 엔터 입력 감지 - ML CV 작동 시작")
+            handle_player_turn()
+        except KeyboardInterrupt:
+            print("\n게임이 중단되었습니다.")
+            game_state.game_over = True
+            break
 
         if game_state.game_over:
             break
@@ -177,11 +198,36 @@ def game_loop() -> None:
 
 
 def handle_player_turn() -> None:
-    """사용자 차례 처리."""
+    """사용자 차례 처리 - 엔터 입력 후 ML CV로 기물 인식."""
     try:
-        # TODO: CV 방식 - 주석 처리됨
-        # move = detect_move_via_cv()
-        move = get_move_from_user()
+        # CV 방식 - ML 기반 기물 인식 사용 (흰색/검은색 모두)
+        move = None
+        if game_state.ml_detector is not None:
+            # 최대 3번 시도
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                print(f"\n[CV] ML 감지 시도 {attempt}/{max_attempts}")
+                move = detect_move_via_ml_capture()
+                if move is not None:
+                    print(f"[CV] ✅ ML 감지 성공 (시도 {attempt}회)")
+                    break
+                else:
+                    if attempt < max_attempts:
+                        print(f"[CV] ⚠️ ML 감지 실패 - 재시도 중... ({attempt}/{max_attempts})")
+                        print("[CV] 기물을 정확한 위치에 놓고 잠시 후 자동으로 재시도합니다...")
+                        time.sleep(1)  # 1초 대기 후 재시도
+                    else:
+                        print(f"[CV] ❌ ML 감지 실패 ({max_attempts}회 시도) - 수동 입력으로 전환")
+            
+            # 3번 시도 후에도 실패하면 수동 입력
+            if move is None:
+                move = get_move_from_user()
+        else:
+            # ML detector가 없으면 기존 CV 방식 또는 사용자 입력 사용
+            move = detect_move_via_cv()
+            if move is None:
+                print("[CV] CV 감지 실패 - 사용자 입력으로 대체")
+                move = get_move_from_user()
     except Exception as exc:
         print(f"[ERROR] 사용자 입력 처리 실패: {exc}")
         return
@@ -208,17 +254,16 @@ def handle_player_turn() -> None:
         return
 
     # 로봇팔 완료 신호는 perform_robot_move 내부에서 이미 대기함
-    # 로봇팔 완료 후 타이머로 이동 명령 전송
-    print("🤖 로봇팔 이동 완료, 타이머로 이동 명령 전송")
-    if send_timer_move_command():
-        # 타이머 완료 신호 대기
-        wait_for_timer_completion(timeout=10.0)
-        print("✅ 타이머 이동 완료")
-    else:
-        print("⚠️ 타이머 이동 명령 전송 실패 (계속 진행)")
-
+    print("🤖 로봇팔 이동 완료")
+    
     apply_detected_move(engine_move)
-    press_timer_button("P1")
+    
+    # 타이머 사용 시 활성화
+    # print("타이머로 이동 명령 전송")
+    # if send_timer_move_command():
+    #     wait_for_timer_completion(timeout=2.0)
+    #     print("✅ 타이머 이동 완료")
+    # press_timer_button("P1")
 
 
 def handle_engine_turn() -> None:
@@ -262,11 +307,15 @@ def apply_detected_move(move: chess.Move) -> None:
         game_state.current_board.push(move)
         game_state.move_count += 1
 
-        # TODO: CV 방식 메시지 - 주석 처리됨
-        # print(f"✅ CV 감지된 이동 적용: {move.uci()} (SAN: {san_move})")
-        print(f"✅ 입력된 이동 적용: {move.uci()} (SAN: {san_move})")
+        # CV 방식 메시지
+        print(f"✅ CV 감지된 이동 적용: {move.uci()} (SAN: {san_move})")
+        
+        # 이동 후 보드 표시
+        print("\n" + "="*50)
+        display_board()
+        print("="*50 + "\n")
 
-        wait_until_robot_idle()
+        # wait_until_robot_idle() 제거 - perform_robot_move()에서 이미 대기함
 
         if check_time_over():
             game_state.game_over = True

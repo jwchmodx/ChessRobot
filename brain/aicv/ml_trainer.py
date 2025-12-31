@@ -136,9 +136,14 @@ class ChessCellDataset(Dataset):
                 print(f"[WARNING] 프레임 {fi:02d} 라벨을 찾을 수 없습니다.")
                 continue
             
-            for r in range(8):  # a~h (위에서 아래)
-                for c in range(8):  # 1~8 (왼쪽에서 오른쪽)
-                    self.samples.append((img_path, r, c, int(lab[r, c])))
+            # CSV 좌표계 변환
+            # CSV: lab[r, c]는 체스 (file=a+r, rank=c+1)을 의미
+            # 이미지 (r, c)는 체스 (file=a+c, rank=8-r)을 의미
+            # 변환: 이미지 (r, c) → CSV lab[c, 7-r]
+            for r in range(8):  # 이미지 row (0=위/rank8, 7=아래/rank1)
+                for c in range(8):  # 이미지 col (0=왼쪽/file a, 7=오른쪽/file h)
+                    label = int(lab[c, 7 - r])  # CSV 좌표로 변환
+                    self.samples.append((img_path, r, c, label))
         
         # 전처리 변환
         if train:

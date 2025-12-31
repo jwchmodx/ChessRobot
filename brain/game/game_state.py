@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 import chess
+import numpy as np
 
 BASE_DIR = Path(__file__).resolve().parent
 BOARD_VALUES_PATH = BASE_DIR / "init_board_values.npy"
@@ -21,12 +22,16 @@ cv_capture_wrapper: Optional[object] = None
 cv_turn_color: str = "white"
 chess_pieces_state: Optional[list[list[str]]] = None
 
+# ML 기물 인식을 위한 이전 상태 저장
+ml_previous_grid: Optional[np.ndarray] = None
+ml_detector: Optional[object] = None
+
 
 def reset_game_state() -> None:
     """게임 전역 상태를 초기값으로 재설정."""
     global current_board, player_color, difficulty, game_over, move_count
     global init_board_values, cv_capture, cv_capture_wrapper, cv_turn_color
-    global chess_pieces_state
+    global chess_pieces_state, ml_previous_grid, ml_detector
 
     current_board = chess.Board()
     player_color = "white"
@@ -39,4 +44,6 @@ def reset_game_state() -> None:
     cv_capture_wrapper = None
     cv_turn_color = "white"
     chess_pieces_state = None
+    ml_previous_grid = None
+    ml_detector = None
 

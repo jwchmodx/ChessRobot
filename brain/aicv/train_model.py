@@ -85,27 +85,98 @@ def main():
     
     frame_indices = sorted(frame_indices)
     print(f"[INFO] 사용 가능한 프레임: {frame_indices[0]} ~ {frame_indices[-1]} ({len(frame_indices)}개)")
-    print(f"[INFO] 전체 데이터셋을 사용하여 학습합니다.")
     
-    # 학습/검증 분할 (80% 학습, 20% 검증)
-    split_idx = int(len(frame_indices) * 0.8)
-    train_frames = frame_indices[:split_idx]
-    val_frames = frame_indices[split_idx:]
+    # 사용자에게 프레임 선택 방식 물어보기
+    print("\n프레임 선택 방식:")
+    print("  1. 자동 분할 (80% 학습, 20% 검증)")
+    print("  2. 수동 선택 (학습/검증 프레임 직접 지정)")
+    choice = input("선택 (1 또는 2, 기본값: 1): ").strip()
     
-    if len(val_frames) == 0:
-        # 검증 데이터가 없으면 마지막 2개를 검증용으로
-        if len(train_frames) >= 2:
-            val_frames = train_frames[-2:]
-            train_frames = train_frames[:-2]
-        else:
-            print("[ERROR] 검증 데이터가 부족합니다. 최소 3개 이상의 프레임이 필요합니다.")
+    if choice == "2":
+        # 수동 선택 모드
+        print(f"\n사용 가능한 프레임: {frame_indices}")
+        print("\n학습용 프레임을 입력하세요.")
+        print("  예시: 1-30 또는 1,2,3,5,10-15")
+        train_input = input("학습 프레임: ").strip()
+        
+        print("\n검증용 프레임을 입력하세요.")
+        print("  예시: 31-35 또는 31,32,33")
+        val_input = input("검증 프레임: ").strip()
+        
+        # 프레임 번호 파싱
+        def parse_frames(input_str: str) -> list[int]:
+            frames = []
+            for part in input_str.split(','):
+                part = part.strip()
+                if '-' in part:
+                    start, end = map(int, part.split('-'))
+                    frames.extend(range(start, end + 1))
+                else:
+                    frames.append(int(part))
+            return sorted(set(frames))
+        
+        try:
+            train_frames = parse_frames(train_input)
+            val_frames = parse_frames(val_input)
+            
+            # 유효성 검사
+            all_selected = set(train_frames + val_frames)
+            available_set = set(frame_indices)
+            invalid = all_selected - available_set
+            
+            if invalid:
+                print(f"[ERROR] 존재하지 않는 프레임: {sorted(invalid)}")
+                return 1
+            
+            if len(train_frames) == 0:
+                print("[ERROR] 학습 프레임이 없습니다.")
+                return 1
+            
+            if len(val_frames) == 0:
+                print("[ERROR] 검증 프레임이 없습니다.")
+                return 1
+            
+            print(f"\n[INFO] 학습 프레임: {train_frames} ({len(train_frames)}개)")
+            print(f"[INFO] 검증 프레임: {val_frames} ({len(val_frames)}개)")
+            
+        except Exception as e:
+            print(f"[ERROR] 프레임 파싱 실패: {e}")
             return 1
+    else:
+        # 자동 분할 모드 (기본값)
+        print(f"[INFO] 전체 데이터셋을 사용하여 자동 분할합니다.")
+        
+        # 학습/검증 분할 (80% 학습, 20% 검증)
+        split_idx = int(len(frame_indices) * 0.8)
+        train_frames = frame_indices[:split_idx]
+        val_frames = frame_indices[split_idx:]
+        
+        if len(val_frames) == 0:
+            # 검증 데이터가 없으면 마지막 2개를 검증용으로
+            if len(train_frames) >= 2:
+                val_frames = train_frames[-2:]
+                train_frames = train_frames[:-2]
+            else:
+                print("[ERROR] 검증 데이터가 부족합니다. 최소 3개 이상의 프레임이 필요합니다.")
+                return 1
+        
+        print(f"[INFO] 학습 프레임: {train_frames[0]} ~ {train_frames[-1]} ({len(train_frames)}개)")
+        print(f"[INFO] 검증 프레임: {val_frames[0]} ~ {val_frames[-1]} ({len(val_frames)}개)")
     
-    print(f"[INFO] 학습 프레임: {train_frames[0]} ~ {train_frames[-1]} ({len(train_frames)}개)")
-    print(f"[INFO] 검증 프레임: {val_frames[0]} ~ {val_frames[-1]} ({len(val_frames)}개)")
+    # 기존 모델 경로 확인 (추가 학습용)
+    base_model_path = None
+    if os.path.exists(output_path):
+        print(f"\n[INFO] 기존 모델 파일이 발견되었습니다: {output_path}")
+        response = input("기존 모델에 추가 학습하시겠습니까? (y/n, 기본값: n): ").strip().lower()
+        if response == 'y':
+            base_model_path = output_path
+            print("[INFO] 추가 학습 모드로 진행합니다.")
+        else:
+            print("[INFO] 처음부터 새로 학습합니다.")
     
     # 사용자 확인
     print("\n학습 설정:")
+    print(f"  - 모드: {'추가 학습' if base_model_path else '처음부터 학습'}")
     print(f"  - 에포크: 12")
     print(f"  - 배치 크기: 128")
     print(f"  - 학습률: 3e-4")
@@ -121,7 +192,7 @@ def main():
             train_frames=train_frames,
             val_frames=val_frames,
             output_path=output_path,
-            base_model_path=None,  # 처음부터 학습
+            base_model_path=base_model_path,  # 기존 모델 경로 (None이면 처음부터 학습)
             epochs=12,
             batch_size=128,
             learning_rate=3e-4,

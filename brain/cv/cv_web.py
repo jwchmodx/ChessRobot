@@ -202,6 +202,15 @@ def build_app(state: Dict[str, Any]) -> Flask:
           <img id="board-img" src="/snapshot_board?ts=" style="max-width:420px; border:1px solid #ccc" />
         </div>
 
+        <div style="margin-top:24px;">
+          <h3>ML 예측 결과</h3>
+          <p style="font-size:13px; color:#555;">(매 1초마다 ML 모델이 예측한 기물 배치를 표시합니다.)</p>
+          <button onclick="refreshMLPrediction()">🔄 ML 예측 새로고침</button>
+          <div id="ml-prediction" style="margin-top:10px; font-family: monospace; font-size:14px; background:#f5f5f5; padding:10px; border:1px solid #ccc; max-width:300px;">
+            로딩 중...
+          </div>
+        </div>
+
         <script>
         function setStatus(msg, ok=true){
           const s = document.getElementById('status');
@@ -229,9 +238,46 @@ def build_app(state: Dict[str, Any]) -> Flask:
             img.src = '/snapshot_board?ts=' + Date.now();
           }
         }
+        function refreshMLPrediction(){
+          fetch('/ml_prediction')
+            .then(r => r.json())
+            .then(data => {
+              const div = document.getElementById('ml-prediction');
+              if(data.success && data.grid){
+                let html = '<table style="border-collapse: collapse; margin: 0 auto;">';
+                html += '<tr><th></th>';
+                for(let i=1; i<=8; i++) html += '<th style="padding:2px 5px;">' + i + '</th>';
+                html += '</tr>';
+                const files = ['a','b','c','d','e','f','g','h'];
+                for(let r=0; r<8; r++){
+                  html += '<tr><th style="padding:2px 5px;">' + files[r] + '</th>';
+                  for(let c=0; c<8; c++){
+                    const val = data.grid[r][c];
+                    let cell = '';
+                    let bg = '#fff';
+                    if(val === 0){ cell = '.'; bg = '#f0f0f0'; }
+                    else if(val === 1){ cell = 'W'; bg = '#fff'; }
+                    else if(val === 2){ cell = 'B'; bg = '#000'; }
+                    html += '<td style="border:1px solid #ccc; padding:5px; text-align:center; background:' + bg + '; color:' + (val===2 ? '#fff' : '#000') + ';">' + cell + '</td>';
+                  }
+                  html += '</tr>';
+                }
+                html += '</table>';
+                html += '<p style="margin-top:10px; font-size:12px;">0=빈칸, 1=흰색, 2=검은색</p>';
+                div.innerHTML = html;
+              } else {
+                div.innerHTML = '<span style="color:#888;">ML 모델이 없거나 예측 실패</span>';
+              }
+            })
+            .catch(e => {
+              document.getElementById('ml-prediction').innerHTML = '<span style="color:red;">오류: ' + e + '</span>';
+            });
+        }
         // 페이지 로드 후 주기적으로 보드 이미지 갱신
         setInterval(refreshBoard, 1000);
+        setInterval(refreshMLPrediction, 1000);
         refreshBoard();
+        refreshMLPrediction();
         </script>
         ''', turn_color=state["turn_color"], prev_turn_color=state["prev_turn_color"], move_str=move_str)
 
@@ -249,6 +295,37 @@ def build_app(state: Dict[str, Any]) -> Flask:
             img = _resize_for_preview(frame, max_width=480)
             quality = 45
         return Response(_encode_jpeg(img, quality=quality), mimetype="image/jpeg")
+
+    @app.route("/ml_prediction")
+    def ml_prediction():
+        """ML 모델의 예측 결과를 JSON으로 반환 (와핑된 이미지 사용)"""
+        try:
+            from game import game_state
+            from cv.cv_manager import warp_with_manual_corners
+            
+            if game_state.ml_detector is None or game_state.cv_capture_wrapper is None:
+                return jsonify({"success": False, "error": "ML detector 또는 캡처 장치가 없습니다"})
+            
+            # 프레임 읽기
+            ret, frame = game_state.cv_capture_wrapper.read()
+            if not ret or frame is None:
+                return jsonify({"success": False, "error": "프레임을 읽을 수 없습니다"})
+            
+            # 와핑된 이미지 얻기
+            warped_frame = warp_with_manual_corners(frame, size=400)
+            if warped_frame is None:
+                return jsonify({"success": False, "error": "와핑 실패"})
+            
+            # 와핑된 이미지를 ML 모델에 전달하여 예측
+            grid = game_state.ml_detector.predict_frame(warped_frame)
+            if grid is None:
+                return jsonify({"success": False, "error": "예측 실패"})
+            
+            # numpy 배열을 리스트로 변환
+            grid_list = grid.tolist()
+            return jsonify({"success": True, "grid": grid_list})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
 
     @app.route("/snapshot_board")
     def snapshot_board():

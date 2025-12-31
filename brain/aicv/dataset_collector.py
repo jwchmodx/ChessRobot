@@ -337,23 +337,25 @@ def build_dataset_collector_app(
             <strong>카메라 상태:</strong> <span id="camera-status">확인 중...</span>
         </div>
         
-        <div class="video-container">
-            <div class="video-box">
-                <h3>원본 카메라</h3>
-                <img id="original-img" src="/stream_original" style="width: 100%;" />
+        <div style="display: flex; gap: 20px; margin-top: 20px;">
+            <!-- 왼쪽: 라벨링 그리드 -->
+            <div style="flex: 1;">
+                <div class="container board-container">
+                    <h3>체스판 라벨링 (클릭하여 변경)</h3>
+                    <p style="color: #666; font-size: 14px;">
+                        <strong>빈 칸</strong> (클릭 1회) → <strong>흰색</strong> (클릭 2회) → <strong>검은색</strong> (클릭 3회) → <strong>빈 칸</strong> (반복)
+                    </p>
+                    <div class="board-grid" id="board-grid"></div>
+                </div>
             </div>
-            <div class="video-box">
-                <h3>와핑된 체스판</h3>
-                <img id="warped-img" src="/stream_warped" style="width: 100%;" />
+            
+            <!-- 오른쪽: 와핑된 체스판 -->
+            <div style="flex: 1;">
+                <div class="video-box">
+                    <h3>와핑된 체스판</h3>
+                    <img id="warped-img" src="/stream_warped" style="width: 100%;" />
+                </div>
             </div>
-        </div>
-        
-        <div class="container board-container">
-            <h3>체스판 라벨링 (클릭하여 변경)</h3>
-            <p style="color: #666; font-size: 14px;">
-                <strong>빈 칸</strong> (클릭 1회) → <strong>흰색</strong> (클릭 2회) → <strong>검은색</strong> (클릭 3회) → <strong>빈 칸</strong> (반복)
-            </p>
-            <div class="board-grid" id="board-grid"></div>
         </div>
     </div>
     
@@ -582,20 +584,13 @@ def build_dataset_collector_app(
         }
         
         // 스트림 갱신 (이미지 로드 완료 후에만 다음 프레임 요청)
-        let originalLoading = false;
         let warpedLoading = false;
         
         function updateStreams() {
             const ts = Date.now();
-            const originalImg = document.getElementById('original-img');
             const warpedImg = document.getElementById('warped-img');
             
-            // 이미지가 로드 중이 아니고 완료된 경우에만 업데이트
-            if (originalImg && !originalLoading && originalImg.complete) {
-                originalLoading = true;
-                originalImg.src = `/stream_original?ts=${ts}`;
-            }
-            
+            // 와핑된 이미지만 업데이트
             if (warpedImg && !warpedLoading && warpedImg.complete) {
                 warpedLoading = true;
                 warpedImg.src = `/stream_warped?ts=${ts}`;
@@ -603,21 +598,11 @@ def build_dataset_collector_app(
         }
         
         // 이미지 로드 완료 처리
-        document.getElementById('original-img').addEventListener('load', function() {
-            originalLoading = false;
-        });
-        
         document.getElementById('warped-img').addEventListener('load', function() {
             warpedLoading = false;
         });
         
         // 이미지 로드 오류 처리
-        document.getElementById('original-img').addEventListener('error', function() {
-            console.error('원본 스트림 로드 실패');
-            originalLoading = false;
-            this.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="480" height="360"><text x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="red">카메라 오류</text></svg>';
-        });
-        
         document.getElementById('warped-img').addEventListener('error', function() {
             console.error('와핑 스트림 로드 실패');
             warpedLoading = false;
