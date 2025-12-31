@@ -17,8 +17,8 @@
 #define SQUARE_SIZE (EFFECTIVE_BOARD_SIZE / 8.0) // 한 칸의 크기 (20mm)
 #define ROBOT_ARM_OFFSET 40.0        // 로봇팔 중심과 체스판 시작점 사이의 거리 (mm)
 #define DEAD_ZONE 250.0              // 잡은 말을 놓는 구역의 좌표
-#define GRIP_OPEN_HEIGHT 65.0         // 그리퍼 열림 각도
-#define Z_HEIGHT 30.0                // 말을 잡거나 놓을 때의 Z축 높이
+#define GRIP_OPEN_HEIGHT 145.0         // 그리퍼 열림 각도
+#define Z_HEIGHT 100.0                // 말을 잡거나 놓을 때의 Z축 높이
 
 // 체스판 회전 보정 (체스판이 로봇에 대해 회전되어 있을 경우)
 // 0: 회전 없음, 90: 시계방향 90도, 180: 180도, 270: 반시계방향 90도
