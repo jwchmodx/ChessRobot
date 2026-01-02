@@ -11,6 +11,7 @@
 #define LOWER_ARM_CHANNEL 2
 #define GRIP_CHANNEL 3
 
+<<<<<<< HEAD
 #define CHESS_BOARD_SIZE 490.0       // 체스판 한 변 길이 (mm)
 #define BOARD_MARGIN 37.0            // 체스판 한쪽 모서리 마진 (mm)
 #define EFFECTIVE_BOARD_SIZE 416.0 // 실제 체스판 크기 (160mm)
@@ -19,6 +20,20 @@
 #define DEAD_ZONE 250.0              // 잡은 말을 놓는 구역의 좌표
 #define GRIP_OPEN_HEIGHT 141.0         // 그리퍼 열림 각도
 #define Z_HEIGHT 104.0                // 말을 잡거나 놓을 때의 Z축 높이
+=======
+#define CHESS_BOARD_SIZE 440.0       // 체스판 한 변 길이 (mm)
+#define BOARD_MARGIN 20.0            // 체스판 한쪽 모서리 마진 (mm)
+#define EFFECTIVE_BOARD_SIZE (CHESS_BOARD_SIZE - 2 * BOARD_MARGIN) // 실제 체스판 크기 (160mm)
+#define SQUARE_SIZE (EFFECTIVE_BOARD_SIZE / 8.0) // 한 칸의 크기 (20mm)
+#define ROBOT_ARM_OFFSET 40.0        // 로봇팔 중심과 체스판 시작점 사이의 거리 (mm)
+#define DEAD_ZONE 250.0              // 잡은 말을 놓는 구역의 좌표
+#define GRIP_OPEN_HEIGHT 145.0         // 그리퍼 열림 각도
+#define Z_HEIGHT 100.0                // 말을 잡거나 놓을 때의 Z축 높이
+
+// 체스판 회전 보정 (체스판이 로봇에 대해 회전되어 있을 경우)
+// 0: 회전 없음, 90: 시계방향 90도, 180: 180도, 270: 반시계방향 90도
+#define BOARD_ROTATION 180
+>>>>>>> c762556d275411f2a5664fdd17bb55446c30a246
 
 
 //실제 체스판에서 동작시 보정값
@@ -26,6 +41,7 @@
 // 2. z값 - 행 올라갈수록 아래 쏠림 
 // 3-1. y값 - 행 올라갈수록 북쪽 쏠림
 // 3-2. y값 - 열 바깥쪽(d-a, e-h)일수록 북쪽 쏠림
+<<<<<<< HEAD
 // 4-1. x값 - 열 바깥쪽(d-a, e-h)일수록 안쪽 쏠림
 
 #define Z_COMP_PER_ROW  8.0  // 행 하나 올라갈 때 z를 올리는 값 (mm)
@@ -35,13 +51,26 @@
 #define Y_COMP_PER_ROW   0.4  // 행 하나 증가할 때 y 보정량 (mm)
 
 #define X_COMP_MAX       50.0   // x 최대 보정
+=======
+
+#define Z_COMP_PER_ROW  6.0  // 행 하나 올라갈 때 z를 올리는 값 (mm)
+#define Z_COMP_MAX      60.0  // 최대 보정량 (안전 제한)
+
+#define X_COMP_PER_COL   0.8   // 열 하나 증가할 때 x 보정량 (mm)
+#define Y_COMP_PER_ROW   0.4   // 행 하나 증가할 때 y 보정량 (mm)
+
+#define X_COMP_MAX       8.0   // x 최대 보정
+>>>>>>> c762556d275411f2a5664fdd17bb55446c30a246
 #define Y_COMP_MAX       10.0  // y 최대 보정
 
 #define Y_CENTER_COMP_PER_COL  0.0   // 중앙에서 한 열 멀어질 때 y 보정 (mm)
 #define Y_CENTER_COMP_MAX      6.0   // 최대 보정량
+<<<<<<< HEAD
 
 #define X_CENTER_COMP_PER_COL  0.0   // 중앙에서 한 열 멀어질 때 x 보정 (mm)
 #define X_CENTER_COMP_MAX     20.0   // 최대 보정량
+=======
+>>>>>>> c762556d275411f2a5664fdd17bb55446c30a246
 
 // 링크 길이 (mm)
 const float L1 = 300.0;
@@ -75,8 +104,11 @@ float Y[8] = {
 };
 
 // 체스 표기법 배열
-char rows[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
-char columns[8] = {'1', '2', '3', '4', '5', '6', '7', '8'};
+// 주의: 변수명과 실제 의미가 다름!
+// rows는 실제로 files (a-h, 열)
+// columns는 실제로 ranks (1-8, 행)
+char files[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};  // 파일 (열)
+char ranks[8] = {'1', '2', '3', '4', '5', '6', '7', '8'};  // 랭크 (행)
 
 // 좌표 매핑 배열
 float map_x[8];
@@ -99,12 +131,15 @@ void compensateXY(float &x, float &y, int colIndex, int rowIndex)
 
   x -= xComp;   // 오른쪽 → 안쪽
 
+<<<<<<< HEAD
   float centerDistX = colIndex - 3.5;  // d/e 기준
   float xCenterComp = centerDistX * X_CENTER_COMP_PER_COL * rowIndex;
   xCenterComp = constrain(xCenterComp, - X_CENTER_COMP_MAX, X_CENTER_COMP_MAX);
 
   x += xCenterComp;
 
+=======
+>>>>>>> c762556d275411f2a5664fdd17bb55446c30a246
   // --- Y 보정 ---
   float yComp = rowIndex * Y_COMP_PER_ROW;
   yComp = constrain(yComp, 0, Y_COMP_MAX);
@@ -122,6 +157,14 @@ void compensateXY(float &x, float &y, int colIndex, int rowIndex)
 }
 
 // 체스 표기법을 좌표로 변환하는 함수
+<<<<<<< HEAD
+=======
+// Python ML 코드의 좌표계와 일치:
+// - (r, c) = (0, 0) → a8 (왼쪽 위)
+// - (r, c) = (0, 7) → h8 (오른쪽 위)
+// - (r, c) = (7, 0) → a1 (왼쪽 아래)
+// - (r, c) = (7, 7) → h1 (오른쪽 아래)
+>>>>>>> c762556d275411f2a5664fdd17bb55446c30a246
 void chessToCoordinates(String chessPos, float &x, float &y, int &colIndexOut, int &rowIndexOut)
 {
   colIndexOut = -1;
@@ -134,37 +177,79 @@ void chessToCoordinates(String chessPos, float &x, float &y, int &colIndexOut, i
     return;
   }
 
-  char col = chessPos.charAt(0); // a, b, c, d, e, f, g, h
-  char row = chessPos.charAt(1); // 1, 2, 3, 4, 5, 6, 7, 8
+  char file = chessPos.charAt(0); // a, b, c, d, e, f, g, h (열, 좌우)
+  char rank = chessPos.charAt(1); // 1, 2, 3, 4, 5, 6, 7, 8 (행, 앞뒤)
 
-  // 열 인덱스 찾기 (a=0, b=1, c=2, ...)
-  int colIndex = -1;
+  // 파일 인덱스 찾기 (a=0, b=1, ..., h=7)
+  int fileIndex = -1;
   for (int i = 0; i < 8; i++)
   {
-    if (rows[i] == col) // 열이라면서 행을 적어놓은 거 실화냐 ㅋㅋㅋㅋㅋ
+    if (files[i] == file)
     {
-      colIndex = i;
+      fileIndex = i;
       break;
     }
   }
 
-  // 행 인덱스 찾기 (1=0, 2=1, 3=2, ...)
-  int rowIndex = -1;
+  // 랭크 인덱스 찾기 (1=0, 2=1, ..., 8=7)
+  int rankIndex = -1;
   for (int i = 0; i < 8; i++)
   {
-    if (columns[i] == row)
+    if (ranks[i] == rank)
     {
-      rowIndex = i;
+      rankIndex = i;
       break;
     }
   }
 
-  if (colIndex >= 0 && rowIndex >= 0)
+  if (fileIndex >= 0 && rankIndex >= 0)
   {
+<<<<<<< HEAD
     x = X[colIndex];
     y = Y[rowIndex];
     colIndexOut = colIndex;
     rowIndexOut = rowIndex;
+=======
+    // 기본 좌표 가져오기 (회전 전)
+    x = X[fileIndex];  // file a=왼쪽, h=오른쪽
+    y = Y[rankIndex];  // rank 1=앞, 8=뒤
+    colIndexOut = fileIndex;
+    rowIndexOut = rankIndex;
+    
+    // 체스판 회전 보정 (좌표 레벨 변환)
+#if BOARD_ROTATION == 90
+    // 시계방향 90도: (x, y) → (y, -x)
+    float tempX = x;
+    x = y;
+    y = -tempX;
+#elif BOARD_ROTATION == 180
+    // 180도 회전: (x, y) → (-x, -y+2*center_y)
+    // 체스판 중심을 기준으로 180도 회전
+    float centerY = ROBOT_ARM_OFFSET + BOARD_MARGIN + EFFECTIVE_BOARD_SIZE / 2;
+    x = -x;
+    y = 2 * centerY - y;
+#elif BOARD_ROTATION == 270
+    // 반시계방향 90도: (x, y) → (-y, x)
+    float tempX = x;
+    x = -y;
+    y = tempX;
+#endif
+    
+    // 디버깅 출력
+    Serial.print("  체스좌표->물리좌표: ");
+    Serial.print(chessPos);
+    Serial.print(" (File[");
+    Serial.print(fileIndex);
+    Serial.print("], Rank[");
+    Serial.print(rankIndex);
+    Serial.print("]) → X=");
+    Serial.print(x);
+    Serial.print(", Y=");
+    Serial.print(y);
+    Serial.print(" (회전: ");
+    Serial.print(BOARD_ROTATION);
+    Serial.println("도)");
+>>>>>>> c762556d275411f2a5664fdd17bb55446c30a246
   }
   else
   {

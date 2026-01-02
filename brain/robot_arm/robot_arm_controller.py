@@ -69,9 +69,12 @@ class RobotArmController:
         """움직임 타입에 따라 명령 리스트 생성.
 
         IKtest.ino 스케치와 호환되도록, 기본은 체스 좌표 문자열을 전송한다.
-        - 일반 수: 'e2e4' → ['e2', 'e4']
-        - 기물 잡기: 'e2e4' (capture) → ['e2cap', 'e4']
-          (아두이노 쪽에서 'e2cap'을 받으면 e2 위치의 말을 잡는 동작을 수행하도록 처리)
+        - 일반 수: 'e2e4' → ['e2e4']               (from+to 한 번에 전송)
+        - 기물 잡기: 'e2e4' (capture) → ['e4cap', 'e2e4']
+          (1) 목적지 칸(e4)에 있는 말을 먼저 잡는 명령
+          (2) 실제 이동(from→to)을 한 번에 전송
+
+        TODO: 필요하면 이전 방식(['e2', 'e4'] 등)으로 되돌릴 수 있도록 옵션화
         """
         if not move_uci or len(move_uci) < 4:
             return []
@@ -79,20 +82,18 @@ class RobotArmController:
         from_square = move_uci[:2]
         to_square = move_uci[2:4]
 
-        # 캡처/특수 규칙에 따라 첫 명령을 수정
+        # 캡처/특수 규칙에 따라 명령 구성
         commands: List[str] = []
 
         if move_type.get("is_capture") or move_type.get("is_en_passant"):
-            # 먼저 잡는 위치를 cap 명령으로 보냄
-            # 기본적으로 목적지(to_square)에 있는 말을 캡처한다고 가정.
+            # 먼저 캡처 명령 (예: 'c5cap')
             capture_square = to_square
-            # 필요하다면 향후 en passant 등에 맞춰 세부 조정 가능
             commands.append(f"{capture_square}cap")
-            commands.append(to_square)
+            # 그 다음 실제 이동 명령을 from+to로 한 번에 보냄 (예: 'c7c5')
+            commands.append(f"{from_square}{to_square}")
         else:
-            # 일반 이동 또는 기타 특수 수는 일단 from → to 순서로만 보냄
-            commands.append(from_square)
-            commands.append(to_square)
+            # 일반 이동은 from+to 한 번만 보냄 (예: 'c7c5')
+            commands.append(f"{from_square}{to_square}")
 
         # TODO: 캐슬링/프로모션 등은 아두이노 스케치 확장 후 여기서도 세분화
         return commands
@@ -110,11 +111,15 @@ class RobotArmController:
             return True  # 연결되지 않아도 성공으로 처리
         
         try:
+            # 실제로 어떤 명령을 보내는지 명확히 로그로 출력
             print(f"📡 명령 전송: {command}")
+            encoded = f"{command}\n".encode()
+            print(f"   [DEBUG] 전송 바이트: {encoded!r}")
             
             # 명령 전송
             if self.serial_connection and self.serial_connection.is_open:
-                self.serial_connection.write(f"{command}\n".encode())
+                self.serial_connection.write(encoded)
+                self.serial_connection.flush()
 
                 if wait_for_completion:
                     # 완료 신호 대기 (MOVE_COMPLETE 또는 DONE)
@@ -126,10 +131,20 @@ class RobotArmController:
                         if self.serial_connection.in_waiting:
                             response = self.serial_connection.readline().decode(errors="ignore").strip()
                             if response:
-                                print(f"🤖 로봇팔 응답: {response}")
+                                # 로봇팔에서 받은 모든 라인을 그대로 출력
+                                print(f"🤖 로봇팔 응답 수신: {response}")
                                 # 완료 신호 확인
                                 upper_response = response.upper()
-                                if any(keyword in upper_response for keyword in ['MOVE_COMPLETE', 'DONE', 'COMPLETE', 'READY']):
+                                # 아두이노에서 'movecomplete', 'MOVE_COMPLETE' 등으로 보낼 수 있으므로 둘 다 허용
+                                completion_keywords = [
+                                    'MOVE_COMPLETE',   # 기존 형식 (언더스코어 포함)
+                                    'MOVECOMPLETE',    # 언더스코어 없이 붙여쓴 형식
+                                    'DONE',
+                                    'COMPLETE',
+                                    'READY',
+                                    'movecomplete',
+                                ]
+                                if any(keyword in upper_response for keyword in completion_keywords):
                                     completion_received = True
                                     print("✅ 로봇팔 완료 신호 수신")
                                     break
