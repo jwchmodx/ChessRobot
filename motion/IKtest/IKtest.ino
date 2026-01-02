@@ -11,22 +11,45 @@
 #define LOWER_ARM_CHANNEL 2
 #define GRIP_CHANNEL 3
 
-#define CHESS_BOARD_SIZE 440.0       // 체스판 한 변 길이 (mm)
-#define BOARD_MARGIN 20.0            // 체스판 한쪽 모서리 마진 (mm)
-#define EFFECTIVE_BOARD_SIZE (CHESS_BOARD_SIZE - 2 * BOARD_MARGIN) // 실제 체스판 크기 (160mm)
-#define SQUARE_SIZE (EFFECTIVE_BOARD_SIZE / 8.0) // 한 칸의 크기 (20mm)
-#define ROBOT_ARM_OFFSET 20.0        // 로봇팔 중심과 체스판 시작점 사이의 거리 (mm)
+#define CHESS_BOARD_SIZE 490.0       // 체스판 한 변 길이 (mm)
+#define BOARD_MARGIN 37.0            // 체스판 한쪽 모서리 마진 (mm)
+#define EFFECTIVE_BOARD_SIZE 416.0 // 실제 체스판 크기 (160mm)
+#define SQUARE_SIZE 52.0 // 한 칸의 크기 (20mm)
+#define ROBOT_ARM_OFFSET 25.0        // 로봇팔 중심과 체스판 시작점 사이의 거리 (mm)
 #define DEAD_ZONE 250.0              // 잡은 말을 놓는 구역의 좌표
-#define GRIP_OPEN_HEIGHT 67.0         // 그리퍼 열림 각도
-#define Z_HEIGHT 30.0                // 말을 잡거나 놓을 때의 Z축 높이
+#define GRIP_OPEN_HEIGHT 141.0         // 그리퍼 열림 각도
+#define Z_HEIGHT 104.0                // 말을 잡거나 놓을 때의 Z축 높이
+
+
+//실제 체스판에서 동작시 보정값
+// 1. x값 - 행 올라갈수록 동쪽 쏠림
+// 2. z값 - 행 올라갈수록 아래 쏠림 
+// 3-1. y값 - 행 올라갈수록 북쪽 쏠림
+// 3-2. y값 - 열 바깥쪽(d-a, e-h)일수록 북쪽 쏠림
+// 4-1. x값 - 열 바깥쪽(d-a, e-h)일수록 안쪽 쏠림
+
+#define Z_COMP_PER_ROW  8.0  // 행 하나 올라갈 때 z를 올리는 값 (mm)
+#define Z_COMP_MAX      60.0  // 최대 보정량 (안전 제한)
+
+#define X_COMP_PER_COL   6.0   // 열 하나 증가할 때 x 보정량 (mm)
+#define Y_COMP_PER_ROW   0.4  // 행 하나 증가할 때 y 보정량 (mm)
+
+#define X_COMP_MAX       50.0   // x 최대 보정
+#define Y_COMP_MAX       10.0  // y 최대 보정
+
+#define Y_CENTER_COMP_PER_COL  0.0   // 중앙에서 한 열 멀어질 때 y 보정 (mm)
+#define Y_CENTER_COMP_MAX      6.0   // 최대 보정량
+
+#define X_CENTER_COMP_PER_COL  0.0   // 중앙에서 한 열 멀어질 때 x 보정 (mm)
+#define X_CENTER_COMP_MAX     20.0   // 최대 보정량
 
 // 링크 길이 (mm)
 const float L1 = 300.0;
-const float L2 = 365.0;
+const float L2 = 355.0;
 
 // 서보별 MIN/MAX 값
-int servoMins[NUM_SERVOS] = {85, 85, 75, 46}; // 각 서보 최소 펄스
-int servoMaxs[NUM_SERVOS] = {450, 450, 445, 52}; // 각 서보 최대 펄스
+int servoMins[NUM_SERVOS] = {85, 85, 75, 210}; // 각 서보 최소 펄스
+int servoMaxs[NUM_SERVOS] = {450, 450, 445, 230}; // 각 서보 최대 펄스
 
 // 각 칸의 좌표 (로봇팔 구동부 기준, 0,0이 원점, 각 칸의 중점)
 float X[8] = {
@@ -67,10 +90,43 @@ Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
 // 2. RobotArmIK 객체 생성 (핀 번호 대신 채널 번호와 드라이버 객체의 주소(&pwm)를 전달)
 RobotArmIK robotArm(&pwm, SHOULDER_CHANNEL, UPPER_ARM_CHANNEL, LOWER_ARM_CHANNEL, GRIP_CHANNEL, L1, L2, servoMins, servoMaxs);
 
+//x, y 보정 함수
+void compensateXY(float &x, float &y, int colIndex, int rowIndex)
+{
+  // --- X 보정 ---
+  float xComp = colIndex * X_COMP_PER_COL;
+  xComp = constrain(xComp, 0, X_COMP_MAX);
+
+  x -= xComp;   // 오른쪽 → 안쪽
+
+  float centerDistX = colIndex - 3.5;  // d/e 기준
+  float xCenterComp = centerDistX * X_CENTER_COMP_PER_COL * rowIndex;
+  xCenterComp = constrain(xCenterComp, - X_CENTER_COMP_MAX, X_CENTER_COMP_MAX);
+
+  x += xCenterComp;
+
+  // --- Y 보정 ---
+  float yComp = rowIndex * Y_COMP_PER_ROW;
+  yComp = constrain(yComp, 0, Y_COMP_MAX);
+
+  y -= yComp;     // 멀어질수록 안쪽으로
+
+
+  // 중앙에서 멀어질수록 보정
+  float centerDist = abs(colIndex - 3.5);  // d/e 기준
+  float yCenterComp = centerDist * Y_CENTER_COMP_PER_COL;
+  yCenterComp = constrain(yCenterComp, 0, Y_CENTER_COMP_MAX);
+
+  y -= yCenterComp;
+  
+}
 
 // 체스 표기법을 좌표로 변환하는 함수
-void chessToCoordinates(String chessPos, float &x, float &y)
+void chessToCoordinates(String chessPos, float &x, float &y, int &colIndexOut, int &rowIndexOut)
 {
+  colIndexOut = -1;
+  rowIndexOut = -1;
+
   if (chessPos.length() != 2)
   {
     x = 0;
@@ -107,12 +163,22 @@ void chessToCoordinates(String chessPos, float &x, float &y)
   {
     x = X[colIndex];
     y = Y[rowIndex];
+    colIndexOut = colIndex;
+    rowIndexOut = rowIndex;
   }
   else
   {
     x = 0;
     y = 0;
   }
+}
+
+//z 보정 함수
+float compensatedZ(float baseZ, int rowIndex) 
+{
+  float zComp = rowIndex * Z_COMP_PER_ROW;
+  zComp = constrain(zComp, 0, Z_COMP_MAX);
+  return baseZ + zComp;
 }
 
 
@@ -128,11 +194,12 @@ void setup()
   // robotArm.begin(); // 라이브러리의 begin()은 현재 비어있으므로 생략 가능
     Serial.println("체스 로봇 좌표 시스템 초기화 완료");
 
-  robotArm.moveTo(365,0,330); // 시작 준비 자세
+  robotArm.moveTo(-355,0,300); // 시작 준비 자세
 
  
   delay(2000);
 }
+
 
 void loop() {
 
@@ -201,8 +268,18 @@ void loop() {
     // 전체 이동 명령 처리 ("e2e4"처럼 from → to)
     else if (isFullMove && fromSquare.length() == 2 && toSquare.length() == 2) {
       float fx, fy, tx, ty;
-      chessToCoordinates(fromSquare, fx, fy);
-      chessToCoordinates(toSquare,   tx, ty);
+      int fCol, fRow, tCol, tRow;
+      chessToCoordinates(fromSquare, fx, fy, fCol, fRow);
+      chessToCoordinates(toSquare,   tx, ty, tCol, tRow);
+
+      //XY 보정
+      compensateXY(fx, fy, fCol, fRow);
+      compensateXY(tx, ty, tCol, tRow);
+      
+      //Z 보정
+      float fZ_pick  = compensatedZ(Z_HEIGHT, fRow);
+      float fZ_open  = compensatedZ(GRIP_OPEN_HEIGHT, fRow);
+      float tZ_place = compensatedZ(Z_HEIGHT, tRow);
 
       Serial.print("입력(전체 이동): "); Serial.println(pos);
       Serial.print("FROM -> x: "); Serial.print(fx);
@@ -211,17 +288,17 @@ void loop() {
       Serial.print(", y: "); Serial.println(ty);
 
       // 1) 출발 칸으로 이동해서 말을 집기
-      robotArm.moveTo(fx, fy, GRIP_OPEN_HEIGHT);
+      robotArm.moveTo(fx, fy, fZ_open);
       delay(400);
       robotArm.gripOpen();
       delay(400);
-      robotArm.moveTo(fx, fy, Z_HEIGHT);
+      robotArm.moveTo(fx, fy, fZ_pick);
       delay(400);
       robotArm.gripClose();
       delay(400);
 
       // 2) 도착 칸으로 이동해서 말을 놓기
-      robotArm.moveTo(tx, ty, Z_HEIGHT);
+      robotArm.moveTo(tx, ty, tZ_place);
       delay(400);
       robotArm.gripOpen();
       Serial.println("movecomplete");
@@ -229,7 +306,13 @@ void loop() {
     // 단일 좌표 명령 처리 ("e4" 또는 "e4cap")
     else if (square.length() == 2) {
       float x, y;
-      chessToCoordinates(square, x, y);
+      int colIdx, rowIdx;
+
+      chessToCoordinates(square, x, y, colIdx, rowIdx);
+      compensateXY(x, y, colIdx, rowIdx);
+
+      float zPick = compensatedZ(Z_HEIGHT, rowIdx);
+      float zOpen = compensatedZ(GRIP_OPEN_HEIGHT, rowIdx);
 
       Serial.print("입력: "); Serial.println(pos);
       Serial.print("계산된 좌표 -> x: "); Serial.print(x);
@@ -237,11 +320,11 @@ void loop() {
 
       if (isCapture) {
         // 1) 잡을 말 위치로 이동해서 집기
-        robotArm.moveTo(x, y, GRIP_OPEN_HEIGHT);
+        robotArm.moveTo(x, y, zOpen);
         delay(400);
         robotArm.gripOpen();
         delay(400);
-        robotArm.moveTo(x, y, Z_HEIGHT);
+        robotArm.moveTo(x, y, zPick);
         delay(400);
         robotArm.gripClose();
         delay(400);
@@ -254,7 +337,7 @@ void loop() {
 
       } else {
         // 단일 위치 테스트: 해당 위치로 이동 후 집었다가 놓기
-        robotArm.moveTo(x, y, Z_HEIGHT);
+        robotArm.moveTo(x, y, zPick);
         delay(1000);
         robotArm.gripClose(); delay(1000);
         robotArm.gripOpen();  delay(1000);

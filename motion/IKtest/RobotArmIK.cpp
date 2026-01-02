@@ -73,9 +73,9 @@ void RobotArmIK::moveTo(float x, float y, float z) {
   float theta_lower_deg    = theta_lower_rad    * 180.0 / M_PI;
 
   // [중요] 실제 기구 한계에 맞춰 각도 범위를 조금 좁게 제한
-  float shoulder_angle = constrain(theta_shoulder_deg,  5, 175);
-  float upper_angle    = constrain(theta_upper_deg,    10, 170);
-  float lower_angle    = constrain(theta_lower_deg,    10, 160);
+  float shoulder_angle = constrain(theta_shoulder_deg,  0, 180);
+  float upper_angle    = constrain(theta_upper_deg,    0, 180);
+  float lower_angle    = constrain(theta_lower_deg,    0, 180);
 
   // ---- 부드러운 모션을 위한 보간 ----
   // 이전 각도에서 목표 각도로 여러 단계에 걸쳐 이동
@@ -128,10 +128,10 @@ void RobotArmIK::moveTo(float x, float y, float z) {
 
 // 그리퍼 열기
 void RobotArmIK::gripOpen() {
-  pwm->setPWM(channel_grip,  0, angleToPulse(channel_grip, 52));   // 0도에 해당하는 펄스 값
+  pwm->setPWM(channel_grip,  0, angleToPulse(channel_grip, 210));   // 0도에 해당하는 펄스 값
 }
 
 // 그리퍼 닫기
 void RobotArmIK::gripClose() {
-  pwm->setPWM(channel_grip,  0, angleToPulse(channel_grip, 46));  // 90도에 해당하는 펄스 값
+  pwm->setPWM(channel_grip,  0, angleToPulse(channel_grip, 210));  // 90도에 해당하는 펄스 값
 }
