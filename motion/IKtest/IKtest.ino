@@ -9,7 +9,7 @@
 #define SHOULDER_CHANNEL 0
 #define UPPER_ARM_CHANNEL 1
 #define LOWER_ARM_CHANNEL 2
-#define GRIP_CHANNEL 4
+
 
 
 #define DEAD_ZONE 250.0              // 잡은 말을 놓는 구역의 좌표
@@ -205,8 +205,8 @@ Coord complete_coordinates[8][8] = {
 // 주의: 변수명과 실제 의미가 다름!
 // rows는 실제로 files (a-h, 열)
 // columns는 실제로 ranks (1-8, 행)
-char files[8] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};  // 파일 (열)
-char ranks[8] = {'1', '2', '3', '4', '5', '6', '7', '8'};  // 랭크 (행)
+char files[8] = {'h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'};  // 파일 (열)
+char ranks[8] = {'8', '7', '6', '5', '4', '3', '2', '1'};  // 랭크 (행)
 
 // 좌표 매핑 배열
 float map_x[8];
