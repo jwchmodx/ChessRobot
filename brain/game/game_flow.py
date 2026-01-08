@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import select
 import time
 from typing import Optional
 
@@ -14,7 +16,8 @@ from cv.cv_detection import (
     initialize_board_reference,
     load_chess_pieces,
 )
-# TODO: CV 대신 입력으로 변경 - 아래 import 사용
+from cv.cv_manager import save_initial_board_from_capture
+
 from cv.player_input import get_move_from_user
 from cv.cv_web import USBCapture, ThreadSafeCapture, start_cv_web_server
 from engine.engine_control import get_stockfish_response_move, make_stockfish_move
@@ -41,6 +44,28 @@ from timer.timer_manager import (
     get_timer_manager,
     init_chess_timer,
 )
+
+
+def reset_board_reference() -> bool:
+    """현재 카메라 상태를 초기 기준값으로 재설정합니다."""
+    if game_state.cv_capture_wrapper is None:
+        print("[!] 캡처 장치가 없어 체스판 기준값을 재설정할 수 없습니다")
+        return False
+    
+    print("[→] 체스판 기준값 재설정 중...")
+    board_vals, _ = save_initial_board_from_capture(
+        game_state.cv_capture_wrapper, str(game_state.BOARD_VALUES_PATH)
+    )
+    if board_vals is not None:
+        game_state.init_board_values = board_vals
+        # ML 이전 그리드 초기화
+        game_state.ml_previous_grid = None
+        print("[✓] 체스판 기준값 재설정 완료")
+        print("[✓] ML 이전 상태 초기화 완료")
+        return True
+    else:
+        print("[!] 체스판 기준값 재설정 실패")
+        return False
 
 
 def initialize_game(stockfish_path: str) -> bool:
@@ -141,8 +166,8 @@ def initialize_game(stockfish_path: str) -> bool:
 
 def game_loop() -> None:
     """메인 게임 루프."""
-    game_state.difficulty = 5
-    print(f"[→] 난이도: {game_state.difficulty} (고정)")
+    game_state.difficulty = 20
+    print(f"[→] 난이도: {game_state.difficulty} (최고 단계 - 전문가)")
     print(f"게임 설정: {game_state.player_color} 플레이어, 난이도 {game_state.difficulty}")
 
     while not game_state.game_over:
@@ -158,25 +183,58 @@ def game_loop() -> None:
             f"FEN: {game_state.current_board.fen()}"
         )
 
-        # 흰색/검은색 차례 모두 엔터 키 입력 대기 (ML CV로 기물 인식)
+        # 흰색/검은색 차례 모두 타이머 버튼 또는 엔터 키 입력 대기 (ML CV로 기물 인식)
         turn_color = "흰색" if game_state.current_board.turn == chess.WHITE else "검은색"
         
         if game_state.ml_previous_grid is None:
-            print(f"🔘 {turn_color} 차례 - 기물을 이동한 후 엔터 키를 누르세요")
-            print("   (첫 엔터: 초기 상태와 비교, 이후: 이전 상태와 비교)")
+            print(f"🔘 {turn_color} 차례 - 기물을 이동한 후 타이머 버튼 또는 엔터 키를 누르세요")
+            print("   (첫 입력: 초기 상태와 비교, 이후: 이전 상태와 비교)")
         else:
-            print(f"🔘 {turn_color} 차례 - 기물을 이동한 후 엔터 키를 누르세요")
-        print("   (엔터: ML CV 인식, 'q'+엔터: 종료)")
+            print(f"🔘 {turn_color} 차례 - 기물을 이동한 후 타이머 버튼 또는 엔터 키를 누르세요")
+        print("   (타이머/엔터: CV 인식, 'r': 초기 기준값 재설정, 'q': 종료)")
         
         try:
-            user_input = input().strip().lower()
-            if user_input in ['q', 'quit', 'exit']:
-                game_state.game_over = True
-                break
+            # 타이머와 키보드 입력을 동시에 대기
+            input_result = _wait_for_input_or_timer()
             
-            # 엔터 입력 시 ML CV로 기물 인식
-            print("🔘 엔터 입력 감지 - ML CV 작동 시작")
-            handle_player_turn()
+            if input_result is None:
+                continue
+            
+            # 입력 타입 파싱
+            if input_result.startswith("timer:"):
+                timer_event = input_result[6:]  # "timer:" 제거
+                print(f"[TIMER] 타이머 입력 감지: {timer_event}")
+                
+                if timer_event == "white_turn_end":
+                    print("[TIMER] 백 차례 종료 (P2 버튼 눌림) - ML CV 작동 시작")
+                    handle_player_turn()
+                elif timer_event == "black_turn_end":
+                    print("[TIMER] 흑 차례 종료 (P1 버튼 눌림)")
+                else:
+                    print(f"[TIMER] 기타 신호: {timer_event}")
+                    continue
+                    
+            elif input_result.startswith("input:"):
+                user_input = input_result[6:]  # "input:" 제거
+                
+                if user_input in ['q', 'quit', 'exit']:
+                    game_state.game_over = True
+                    break
+                elif user_input == 'r':
+                    # 초기 기준값 재설정
+                    print("\n[🔄] 초기 기준값 재설정 시작...")
+                    print("[안내] 체스판을 올바른 초기 상태로 배치하세요")
+                    if reset_board_reference():
+                        print("[✓] 초기 기준값이 재설정되었습니다")
+                        print("[→] 다음 입력부터 새로운 기준값으로 비교합니다\n")
+                    else:
+                        print("[!] 초기 기준값 재설정 실패\n")
+                    continue
+                
+                # 엔터 입력 시 ML CV로 기물 인식
+                print("🔘 엔터 입력 감지 - ML CV 작동 시작")
+                handle_player_turn()
+            
         except KeyboardInterrupt:
             print("\n게임이 중단되었습니다.")
             game_state.game_over = True
@@ -365,4 +423,30 @@ def _poll_timer_button() -> Optional[str]:
         return "black_turn_end" if raw_signal == "P1" else "white_turn_end"
 
     return raw_signal
+
+
+def _wait_for_input_or_timer() -> Optional[str]:
+    """타이머 입력을 지속적으로 체크하면서 사용자 입력을 대기합니다.
+    
+    Returns:
+        'timer:white_turn_end' - 타이머에서 백 차례 종료 신호
+        'timer:black_turn_end' - 타이머에서 흑 차례 종료 신호
+        'input:...' - 사용자 키보드 입력
+        None - 에러 발생
+    """
+    print("   입력 대기 중... (타이머 버튼 또는 엔터 키 입력)")
+    
+    while True:
+        # 타이머 입력 체크
+        timer_input = _poll_timer_button()
+        if timer_input:
+            return f"timer:{timer_input}"
+        
+        # 키보드 입력 체크 (논블로킹)
+        if select.select([sys.stdin], [], [], 0.1)[0]:
+            user_input = sys.stdin.readline().strip().lower()
+            return f"input:{user_input}"
+        
+        # 짧은 대기 (CPU 사용률 감소)
+        time.sleep(0.05)
 

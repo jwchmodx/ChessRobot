@@ -131,14 +131,31 @@ class ChessPieceMLDetector:
         for (r, c), pred in zip(coords, preds):
             grid[r, c] = int(pred)
         
-        # CSV 좌표계와 이미지 좌표계 변환
-        # 학습 시 lab[r, c] (체스 file=a+r, rank=c+1)를 이미지 (r, c)에 할당
-        # 추론 시 grid[r, c]는 체스 (file=a+c, rank=8-r)를 의미해야 함
-        # 변환: corrected[r, c] = grid[c, 7-r]
+        # 좌표 변환:
+        # - 이미지: img[r][c]는 위에서 아래(r=0~7), 왼쪽에서 오른쪽(c=0~7)
+        # - 체스 좌표: grid[chess_r][chess_c]
+        #   - chess_r: rank 8~1 (0=rank 8, 7=rank 1)  
+        #   - chess_c: file a~h (0=file a, 7=file h)
+        #
+        # dataset_collector의 CSV 형식:
+        # - labels[r][c]: row=file(a~h), col=rank(1~8)
+        # - labels[0][0] = a1, labels[0][7] = a8
+        # - labels[7][0] = h1, labels[7][7] = h8
+        #
+        # 변환 공식:
+        # - labels[r][c] = (file=a+r, rank=c+1)
+        # - chess_grid[8-rank][file] = chess_grid[8-(c+1)][r] = chess_grid[7-c][r]
+        # - 즉: chess_grid[7-c][r] = labels[r][c]
+        #
+        # 그런데 이미지를 읽을 때 카메라가 rotate_180=True로 설정되어 있으므로
+        # 이미지가 이미 180도 회전된 상태입니다.
+        # 따라서: img[r][c] → labels[r][c] (동일 좌표)
+        
         corrected_grid = np.zeros((8, 8), dtype=int)
-        for r in range(8):
-            for c in range(8):
-                corrected_grid[r, c] = grid[c, 7 - r]
+        for r in range(8):  
+            for c in range(8):  
+                # labels[r][c] → chess_grid[7-c][r]
+                corrected_grid[7 - c, r] = grid[r, c]
         
         return corrected_grid
     
@@ -149,6 +166,12 @@ class ChessPieceMLDetector:
         Args:
             grid: 8x8 numpy 배열 (0=empty, 1=white, 2=black)
             title: 출력 제목
+            
+        좌표 체계: grid[r][c]는 체스 좌표 (file=a+c, rank=8-r)
+        - grid[0][0] = a8 (왼쪽 위)
+        - grid[0][7] = h8 (오른쪽 위)
+        - grid[7][0] = a1 (왼쪽 아래)
+        - grid[7][7] = h1 (오른쪽 아래)
         """
         print(f"\n[{title}]")
         # 열 헤더: a b c d e f g h
