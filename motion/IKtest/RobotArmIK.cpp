@@ -2,7 +2,46 @@
 #include <Wire.h>
 #include <Adafruit_PWMServoDriver.h>
 
-#define NUM_SERVOS 4  // 사용하는 모터 개수 (어깨, 상박, 하박, 그리퍼)
+#define NUM_SERVOS 3  // 사용하는 모터 개수 (어깨, 상박, 하박, 그리퍼)
+
+// =============================
+// 그리퍼용 DC 모터(TB6612 등) 제어 핀 - motor_test.ino와 동일하게 사용
+// =============================
+const int GRIP_STBY = 10; // standby
+const int GRIP_PWMA = 3;  // Speed control 
+const int GRIP_AIN1 = 9;  // Direction
+const int GRIP_AIN2 = 8;  // Direction
+
+// 간단한 그리퍼 모터 제어 함수 (motor_test.ino 방식)
+static void gripMotorInitPins() {
+  pinMode(GRIP_STBY, OUTPUT);
+  pinMode(GRIP_PWMA, OUTPUT);
+  pinMode(GRIP_AIN1, OUTPUT);
+  pinMode(GRIP_AIN2, OUTPUT);
+}
+
+static void gripMotorMove(int speed, int direction) {
+  // direction: 0 clockwise, 1 counter-clockwise
+  // speed: 0~255
+  digitalWrite(GRIP_STBY, HIGH); // disable standby
+
+  bool inPin1 = LOW;
+  bool inPin2 = HIGH;
+
+  if (direction == 1) {
+    inPin1 = HIGH;
+    inPin2 = LOW;
+  }
+
+  digitalWrite(GRIP_AIN1, inPin1);
+  digitalWrite(GRIP_AIN2, inPin2);
+  analogWrite(GRIP_PWMA, speed);
+}
+
+static void gripMotorStop() {
+  // enable standby  
+  digitalWrite(GRIP_STBY, LOW); 
+}
 
 // 생성자: 드라이버 객체 포인터와 각 서보의 '채널 번호'와 서보별 min/max 값을 입력받습니다.
 RobotArmIK::RobotArmIK(Adafruit_PWMServoDriver* pwm,
@@ -29,10 +68,10 @@ RobotArmIK::RobotArmIK(Adafruit_PWMServoDriver* pwm,
 
   
 
-// 이 클래스에서는 특별히 할 일이 없으므로 비워둡니다.
-// 드라이버 초기화는 메인 .ino 파일에서 수행합니다.
 void RobotArmIK::begin() {
-  // pwm->begin(); // 드라이버 시작 코드는 setup()에서 한 번만 호출하는 것이 좋습니다.
+  // 서보 드라이버 초기화는 .ino 쪽에서 하고,
+  // 여기서는 그리퍼 DC 모터용 핀만 세팅
+  gripMotorInitPins();
 }
 
 
@@ -79,21 +118,33 @@ void RobotArmIK::moveTo(float x, float y, float z) {
 
   // ---- 부드러운 모션을 위한 보간 ----
   // 이전 각도에서 목표 각도로 여러 단계에 걸쳐 이동
-  static float cur_shoulder = shoulder_angle;
-  static float cur_upper    = upper_angle;
-  static float cur_lower    = lower_angle;
+  // (초기 한 번은 바로 해당 각도로 세팅)
+  static float cur_shoulder = 90.0;
+  static float cur_upper    = 90.0;
+  static float cur_lower    = 90.0;
+  static bool  initialized  = false;
 
-  const int   STEPS      = 25;   // 단계 수 (값을 늘리면 더 느리고 부드럽게)
-  const int   STEP_DELAY = 25;   // 각 단계 사이 지연(ms)
+  if (!initialized) {
+    cur_shoulder = shoulder_angle;
+    cur_upper    = upper_angle;
+    cur_lower    = lower_angle;
+    initialized  = true;
+  }
+
+  const int   STEPS      = 60;   // 단계 수 (값을 늘리면 더 느리고 부드럽게)
+  const int   STEP_DELAY = 40;   // 각 단계 사이 지연(ms)
 
   int pwm_upper_test;
 
   for (int i = 1; i <= STEPS; i++) {
     float t = (float)i / (float)STEPS;
 
-    float step_shoulder = cur_shoulder + (shoulder_angle - cur_shoulder) * t;
-    float step_upper    = cur_upper    + (upper_angle    - cur_upper)    * t;
-    float step_lower    = cur_lower    + (lower_angle    - cur_lower)    * t;
+    // ease-in / ease-out (가속·감속 곡선)으로 더 부드럽게
+    float s = (1.0 - cos(t * M_PI)) * 0.5;  // 0~1
+
+    float step_shoulder = cur_shoulder + (shoulder_angle - cur_shoulder) * s;
+    float step_upper    = cur_upper    + (upper_angle    - cur_upper)    * s;
+    float step_lower    = cur_lower    + (lower_angle    - cur_lower)    * s;
 
     int pwm_shoulder = angleToPulse(channel_shoulder, step_shoulder);
     int pwm_upper    = angleToPulse(channel_upper,    step_upper);
@@ -126,12 +177,23 @@ void RobotArmIK::moveTo(float x, float y, float z) {
   Serial.println(pwm_upper_test);
 }
 
-// 그리퍼 열기
 void RobotArmIK::gripOpen() {
-  pwm->setPWM(channel_grip,  0, angleToPulse(channel_grip, 210));   // 0도에 해당하는 펄스 값
+  // motor_test.ino 테스트 기준: PWM 110일 때 "열림"
+  // direction 값은 실제 동작을 보고 0/1 바꿔서 사용하면 됨
+  int speed = 110;
+  int direction = 1; // 필요 시 0과 1을 바꿔서 테스트
+
+  gripMotorMove(speed, direction);
+  delay(500);        // 모터를 일정 시간 구동 (필요에 따라 조정)
+  gripMotorStop();
 }
 
-// 그리퍼 닫기
 void RobotArmIK::gripClose() {
-  pwm->setPWM(channel_grip,  0, angleToPulse(channel_grip, 210));  // 90도에 해당하는 펄스 값
+  // motor_test.ino 테스트 기준: PWM 155일 때 "닫힘"
+  int speed = 155;
+  int direction = 0; // 열기와 반대 방향
+
+  gripMotorMove(speed, direction);
+  delay(500);        // 모터를 일정 시간 구동 (필요에 따라 조정)
+  gripMotorStop();
 }
