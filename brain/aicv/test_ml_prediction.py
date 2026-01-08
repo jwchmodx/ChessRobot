@@ -21,14 +21,23 @@ from cv.cv_web import USBCapture, ThreadSafeCapture
 
 
 def print_grid(grid, title="ML 예측 결과"):
-    """8x8 그리드를 콘솔에 보기 좋게 출력"""
+    """8x8 그리드를 콘솔에 보기 좋게 출력
+    
+    좌표 체계: grid[r][c]는 체스 좌표 (file=a+c, rank=8-r)
+    - grid[0][0] = a8 (왼쪽 위)
+    - grid[0][7] = h8 (오른쪽 위)
+    - grid[7][0] = a1 (왼쪽 아래)
+    - grid[7][7] = h1 (오른쪽 아래)
+    """
     print(f"\n{'='*50}")
     print(f"{title}")
     print(f"{'='*50}")
-    print("   " + " ".join([str(i+1) for i in range(8)]))
-    files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+    # 열 헤더: a b c d e f g h
+    print("  " + " ".join(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']))
+    
     for r in range(8):
-        row_str = f"{files[r]} "
+        rank = 8 - r  # row 0 = rank 8, row 7 = rank 1
+        row_str = f"{rank} "
         for c in range(8):
             val = grid[r, c]
             if val == 0:

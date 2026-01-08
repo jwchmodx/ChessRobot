@@ -279,16 +279,28 @@ def detect_move_via_ml(current_grid: np.ndarray, previous_grid: Optional[np.ndar
         print(f"  [{i+1}] ({r},{c}) = {file}{rank}: 보드={board_str}, 카메라={camera_str}")
     
     # 변화 분석
-    src = None
-    dst = None
+    if len(changes) == 1:
+        # 한 칸만 변화 - 이동을 감지할 수 없음
+        r, c, board_val, camera_val = changes[0]
+        file = chr(ord('a') + c)
+        rank = str(8 - r)
+        board_str = {0: "빈칸", 1: "흰색", 2: "검은색"}.get(board_val, f"?({board_val})")
+        camera_str = {0: "빈칸", 1: "흰색", 2: "검은색"}.get(camera_val, f"?({camera_val})")
+        print(f"[ML] 한 칸만 변화: {file}{rank} (보드: {board_str}, 카메라: {camera_str})")
+        print("[ML] 한 칸만 변화 - 출발지와 도착지를 모두 알 수 없음")
+        return None
     
-    if len(changes) == 2:
+    elif len(changes) == 2:
         # 일반적인 이동: 2개 칸 변화
+        print("[ML] 2개 칸 변화 - 일반 이동 처리")
         r1, c1, board1, camera1 = changes[0]
         r2, c2, board2, camera2 = changes[1]
         
         # 출발지: 보드에는 기물이 있는데 카메라에는 없음
         # 도착지: 보드에는 없는데 카메라에는 기물이 있음
+        src = None
+        dst = None
+        
         if board1 == current_turn_color and camera1 != current_turn_color:
             # 첫 번째 칸: 보드에 현재 차례 기물 있음, 카메라에는 없음 → 출발지
             src = (r1, c1)
@@ -306,53 +318,83 @@ def detect_move_via_ml(current_grid: np.ndarray, previous_grid: Optional[np.ndar
             else:
                 dst = (r1, c1)
         else:
-            # 둘 다 다른 패턴
-            # 첫 번째를 src, 두 번째를 dst로 추정
+            # 둘 다 다른 패턴 - 두 가지 순서 모두 시도
             src = (r1, c1)
             dst = (r2, c2)
-    
-    elif len(changes) == 1:
-        # 한 칸만 변화
-        r, c, board_val, camera_val = changes[0]
-        file = chr(ord('a') + c)
-        rank = str(8 - r)
-        board_str = {0: "빈칸", 1: "흰색", 2: "검은색"}.get(board_val, f"?({board_val})")
-        camera_str = {0: "빈칸", 1: "흰색", 2: "검은색"}.get(camera_val, f"?({camera_val})")
-        print(f"[ML] 한 칸만 변화: {file}{rank} (보드: {board_str}, 카메라: {camera_str})")
-        # 한 칸만 변화는 이동을 감지할 수 없음
-        print("[ML] 한 칸만 변화 - 출발지와 도착지를 모두 알 수 없음")
-        return None
-    
-    else:
-        # 3개 이상 변화 - 복잡한 상황
-        print(f"[ML] {len(changes)}개 칸 변화 - 너무 복잡하여 처리 불가")
-        # 가장 큰 변화 2개만 선택
-        # 간단히 첫 2개 사용
-        if len(changes) >= 2:
-            src = (changes[0][0], changes[0][1])
-            dst = (changes[1][0], changes[1][1])
+        
+        if src is None or dst is None:
+            print("[ML] src/dst를 결정할 수 없습니다.")
+            return None
+        
+        src_file = chr(ord('a') + src[1])
+        src_rank = str(8 - src[0])
+        dst_file = chr(ord('a') + dst[1])
+        dst_rank = str(8 - dst[0])
+        print(f"[ML] 감지된 이동: src={src_file}{src_rank}, dst={dst_file}{dst_rank}")
+        
+        # chess.Move로 변환 (두 가지 순서 모두 시도)
+        print(f"[ML] 체스 좌표 변환 시도 중...")
+        move = _resolve_move_from_coords(src, dst)
+        
+        if move is not None:
+            print(f"[ML] ✅ 이동 변환 성공: {move.uci()} (SAN: {game_state.current_board.san(move)})")
+            return move
         else:
+            print(f"[ML] ❌ 합법적인 이동을 찾지 못했습니다: src={src_file}{src_rank}, dst={dst_file}{dst_rank}")
+            print(f"[ML] 현재 보드 상태:")
+            print(f"[ML]   FEN: {game_state.current_board.fen()}")
+            print(f"[ML]   합법적인 이동 목록 (처음 10개):")
+            legal_moves = list(game_state.current_board.legal_moves)
+            for i, legal_move in enumerate(legal_moves[:10]):
+                print(f"[ML]     {i+1}. {legal_move.uci()}")
+            if len(legal_moves) > 10:
+                print(f"[ML]     ... 외 {len(legal_moves) - 10}개")
             return None
     
-    if src is None or dst is None:
-        print("[ML] src/dst를 결정할 수 없습니다.")
-        return None
-    
-    src_file = chr(ord('a') + src[1])
-    src_rank = str(8 - src[0])
-    dst_file = chr(ord('a') + dst[1])
-    dst_rank = str(8 - dst[0])
-    print(f"[ML] 감지된 이동: src=({src[0]},{src[1]})={src_file}{src_rank}, dst=({dst[0]},{dst[1]})={dst_file}{dst_rank}")
-    
-    # chess.Move로 변환
-    print(f"[ML] 체스 좌표 변환 시도 중...")
-    move = _resolve_move_from_coords(src, dst)
-    
-    if move is not None:
-        # 성공적으로 이동을 찾았음 (보드 상태는 apply_detected_move에서 업데이트됨)
-        print(f"[ML] ✅ 이동 변환 성공: {move.uci()} (SAN: {game_state.current_board.san(move)})")
     else:
-        print(f"[ML] ❌ 합법적인 이동을 찾지 못했습니다: src={src_file}{src_rank}, dst={dst_file}{dst_rank}")
+        # 3개 이상 변화 - 특수 수 (캐슬링, 앙파상 등) 처리
+        # 모든 (src, dst) 조합을 시도하여 합법적인 수 찾기
+        print(f"[ML] {len(changes)}개 칸 변화 - 특수 수 가능성 (모든 조합 시도)")
+        coords = [(r, c) for (r, c, _, _) in changes]
+        
+        # 모든 순서쌍 (src, dst) 생성
+        candidates = []
+        for i in range(len(coords)):
+            for j in range(len(coords)):
+                if i != j:
+                    candidates.append((coords[i], coords[j]))
+        
+        print(f"[ML] 총 {len(candidates)}개의 (src, dst) 조합을 시도합니다.")
+        
+        # 각 조합을 시도하여 합법적인 수 찾기
+        for idx, (src, dst) in enumerate(candidates):
+            src_file = chr(ord('a') + src[1])
+            src_rank = str(8 - src[0])
+            dst_file = chr(ord('a') + dst[1])
+            dst_rank = str(8 - dst[0])
+            
+            if idx < 5 or idx == len(candidates) - 1:  # 처음 5개와 마지막만 출력
+                print(f"[ML]   조합 {idx+1}/{len(candidates)}: {src_file}{src_rank} → {dst_file}{dst_rank}")
+            
+            # chess.Move로 변환 시도
+            move = _resolve_move_from_coords(src, dst)
+            
+            if move is not None:
+                # 합법적인 이동 발견!
+                print(f"[ML] ✅ 합법적인 이동 발견 (조합 {idx+1}/{len(candidates)}): {move.uci()} (SAN: {game_state.current_board.san(move)})")
+                
+                # 특수 수인지 확인하여 로그 출력
+                if game_state.current_board.is_castling(move):
+                    print(f"[ML]   → 캐슬링 감지됨!")
+                elif game_state.current_board.is_en_passant(move):
+                    print(f"[ML]   → 앙파상 감지됨!")
+                elif move.promotion:
+                    print(f"[ML]   → 프로모션 감지됨!")
+                
+                return move
+        
+        # 모든 조합을 시도했지만 합법적인 이동을 찾지 못함
+        print(f"[ML] ❌ 모든 {len(candidates)}개 조합을 시도했지만 합법적인 이동을 찾지 못했습니다.")
         print(f"[ML] 현재 보드 상태:")
         print(f"[ML]   FEN: {game_state.current_board.fen()}")
         print(f"[ML]   합법적인 이동 목록 (처음 10개):")
@@ -361,8 +403,8 @@ def detect_move_via_ml(current_grid: np.ndarray, previous_grid: Optional[np.ndar
             print(f"[ML]     {i+1}. {legal_move.uci()}")
         if len(legal_moves) > 10:
             print(f"[ML]     ... 외 {len(legal_moves) - 10}개")
-    
-    return move
+        
+        return None
 
 
 def _resolve_move_from_coords(

@@ -246,11 +246,14 @@ def build_app(state: Dict[str, Any]) -> Flask:
               if(data.success && data.grid){
                 let html = '<table style="border-collapse: collapse; margin: 0 auto;">';
                 html += '<tr><th></th>';
-                for(let i=1; i<=8; i++) html += '<th style="padding:2px 5px;">' + i + '</th>';
-                html += '</tr>';
+                // 열 헤더: a b c d e f g h
                 const files = ['a','b','c','d','e','f','g','h'];
+                for(let i=0; i<8; i++) html += '<th style="padding:2px 5px;">' + files[i] + '</th>';
+                html += '</tr>';
+                // 행 레이블: 8 7 6 5 4 3 2 1 (세로축)
                 for(let r=0; r<8; r++){
-                  html += '<tr><th style="padding:2px 5px;">' + files[r] + '</th>';
+                  const rank = 8 - r; // row 0 = rank 8
+                  html += '<tr><th style="padding:2px 5px;">' + rank + '</th>';
                   for(let c=0; c<8; c++){
                     const val = data.grid[r][c];
                     let cell = '';
