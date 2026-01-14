@@ -116,9 +116,24 @@ void RobotArmIK::moveTo(float x, float y, float z) {
   float upper_angle    = constrain(theta_upper_deg,    0, 180);
   float lower_angle    = constrain(theta_lower_deg,    0, 180);
 
-  // ---- 부드러운 모션을 위한 보간 ----
-  // 이전 각도에서 목표 각도로 여러 단계에 걸쳐 이동
-  // (초기 한 번은 바로 해당 각도로 세팅)
+  // ============================================================
+  // 방법 선택 (아래 중 하나만 사용)
+  // ============================================================
+  
+  // ========== 방법 1: 직접 이동 (가장 부드럽고 빠름, 추천!) ==========
+  // 서보가 자체적으로 부드럽게 이동하므로 보간 불필요
+  int pwm_shoulder = angleToPulse(channel_shoulder, shoulder_angle);
+  int pwm_upper    = angleToPulse(channel_upper,    upper_angle);
+  int pwm_lower    = angleToPulse(channel_lower,    lower_angle);
+  
+  pwm->setPWM(channel_shoulder, 0, pwm_shoulder);
+  pwm->setPWM(channel_upper,    0, pwm_upper);
+  pwm->setPWM(channel_lower,    0, pwm_lower);
+  
+  // 서보가 이동할 시간만 대기 (조정 가능)
+  delay(300);
+  
+  /* ========== 방법 2: 단순 보간 (보간이 꼭 필요하면) ==========
   static float cur_shoulder = 90.0;
   static float cur_upper    = 90.0;
   static float cur_lower    = 90.0;
@@ -131,50 +146,39 @@ void RobotArmIK::moveTo(float x, float y, float z) {
     initialized  = true;
   }
 
-  const int   STEPS      = 60;   // 단계 수 (값을 늘리면 더 느리고 부드럽게)
-  const int   STEP_DELAY = 20;   // 각 단계 사이 지연(ms)
-
-  int pwm_upper_test;
+  const int   STEPS      = 10;   // 단계 수 줄임 (60 → 10)
+  const int   STEP_DELAY = 50;   // delay 늘림 (20 → 50ms)
 
   for (int i = 1; i <= STEPS; i++) {
-    float t = (float)i / (float)STEPS;
+    float t = (float)i / (float)STEPS;  // linear 보간 (0~1)
 
-    // ease-in / ease-out (가속·감속 곡선)으로 더 부드럽게
-    float s = (1.0 - cos(t * M_PI)) * 0.5;  // 0~1
-
-    float step_shoulder = cur_shoulder + (shoulder_angle - cur_shoulder) * s;
-    float step_upper    = cur_upper    + (upper_angle    - cur_upper)    * s;
-    float step_lower    = cur_lower    + (lower_angle    - cur_lower)    * s;
+    float step_shoulder = cur_shoulder + (shoulder_angle - cur_shoulder) * t;
+    float step_upper    = cur_upper    + (upper_angle    - cur_upper)    * t;
+    float step_lower    = cur_lower    + (lower_angle    - cur_lower)    * t;
 
     int pwm_shoulder = angleToPulse(channel_shoulder, step_shoulder);
     int pwm_upper    = angleToPulse(channel_upper,    step_upper);
     int pwm_lower    = angleToPulse(channel_lower,    step_lower);
-    
-    // 디버깅용 로그 (너무 많으면 필요할 때만 사용)
-    // Serial.print("[step] sh:"); Serial.print(step_shoulder);
-    // Serial.print(" up:"); Serial.print(step_upper);
-    // Serial.print(" lo:"); Serial.println(step_lower);
 
     pwm->setPWM(channel_shoulder, 0, pwm_shoulder);
     pwm->setPWM(channel_upper,    0, pwm_upper);
     pwm->setPWM(channel_lower,    0, pwm_lower);
-    int pwm_upper_test = pwm_upper;
+    
     delay(STEP_DELAY);
   }
 
-  // 최종 각도를 현재 상태로 저장
   cur_shoulder = shoulder_angle;
   cur_upper    = upper_angle;
   cur_lower    = lower_angle;
+  */
 
   // 최종 위치 로그
   Serial.print("[moveTo] x: "); Serial.print(x);
   Serial.print(", y: "); Serial.print(y);
   Serial.print(", z: "); Serial.print(z);
-  Serial.print(" | shoulder_angle: "); Serial.print(shoulder_angle);
-  Serial.print(", upper_angle: "); Serial.print(upper_angle);
-  Serial.print(", lower_angle: "); Serial.print(lower_angle);
-  Serial.println(pwm_upper_test);
+  Serial.print(" | shoulder: "); Serial.print(shoulder_angle);
+  Serial.print(", upper: "); Serial.print(upper_angle);
+  Serial.print(", lower: "); Serial.println(lower_angle);
 }
 
 void RobotArmIK::gripOpen() {
