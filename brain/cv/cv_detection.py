@@ -366,7 +366,9 @@ def detect_move_via_ml(current_grid: np.ndarray, previous_grid: Optional[np.ndar
         
         print(f"[ML] 총 {len(candidates)}개의 (src, dst) 조합을 시도합니다.")
         
-        # 각 조합을 시도하여 합법적인 수 찾기
+        # 모든 합법적인 수를 먼저 수집 (특수 수 우선 반환을 위해)
+        valid_moves = []
+        
         for idx, (src, dst) in enumerate(candidates):
             src_file = chr(ord('a') + src[1])
             src_rank = str(8 - src[0])
@@ -384,14 +386,28 @@ def detect_move_via_ml(current_grid: np.ndarray, previous_grid: Optional[np.ndar
                 print(f"[ML] ✅ 합법적인 이동 발견 (조합 {idx+1}/{len(candidates)}): {move.uci()} (SAN: {game_state.current_board.san(move)})")
                 
                 # 특수 수인지 확인하여 로그 출력
+                move_type = "일반"
                 if game_state.current_board.is_castling(move):
                     print(f"[ML]   → 캐슬링 감지됨!")
+                    move_type = "캐슬링"
                 elif game_state.current_board.is_en_passant(move):
                     print(f"[ML]   → 앙파상 감지됨!")
+                    move_type = "앙파상"
                 elif move.promotion:
                     print(f"[ML]   → 프로모션 감지됨!")
+                    move_type = "프로모션"
                 
-                return move
+                valid_moves.append((move, move_type, idx))
+        
+        # 합법적인 수가 있으면 특수 수를 우선 반환
+        if valid_moves:
+            # 우선순위: 캐슬링 > 앙파상 > 프로모션 > 일반
+            priority_order = {"캐슬링": 0, "앙파상": 1, "프로모션": 2, "일반": 3}
+            valid_moves.sort(key=lambda x: priority_order.get(x[1], 3))
+            
+            best_move, best_type, best_idx = valid_moves[0]
+            print(f"[ML] 최종 선택: {best_move.uci()} (타입: {best_type}, 조합 {best_idx+1})")
+            return best_move
         
         # 모든 조합을 시도했지만 합법적인 이동을 찾지 못함
         print(f"[ML] ❌ 모든 {len(candidates)}개 조합을 시도했지만 합법적인 이동을 찾지 못했습니다.")

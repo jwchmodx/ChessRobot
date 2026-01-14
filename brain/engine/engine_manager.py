@@ -9,6 +9,7 @@ Stockfish 엔진 매니저
 
 import os
 import math
+import threading
 import chess
 import chess.engine
 STOCKFISH_PATH = '/usr/games/stockfish'
@@ -18,6 +19,10 @@ STOCKFISH_PATH = '/usr/games/stockfish'
 class _EngineManager:
     def __init__(self):
         self._engine = None
+        self._ponder_thread = None
+        self._ponder_stop_event = threading.Event()
+        self._ponder_result = None
+        self._ponder_lock = threading.Lock()
 
     def ensure_engine(self) -> bool:
         if self._engine is not None:
@@ -27,7 +32,9 @@ class _EngineManager:
             return False
         try:
             self._engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
-            # 기본 설정 (난이도는 호출부에서 depth로 제어)
+            # Skill Level을 최고(20)로 설정 (depth와 독립적으로 작동)
+            self._engine.configure({"Skill Level": 20})
+            print("[✓] Stockfish Skill Level: 20 (최고)")
             return True
         except Exception as e:
             print(f"[!] Stockfish 초기화 실패: {e}")
@@ -35,12 +42,61 @@ class _EngineManager:
             return False
 
     def quit(self):
+        # Ponder 중지
+        self.stop_ponder()
         if self._engine is not None:
             try:
                 self._engine.quit()
             except Exception:
                 pass
             self._engine = None
+    
+    def start_ponder(self, board: chess.Board, depth: int = 10):
+        """플레이어가 생각하는 동안 백그라운드에서 다음 수를 미리 계산 (Ponder)"""
+        if not self.ensure_engine():
+            return False
+        
+        # 기존 ponder 중지
+        self.stop_ponder()
+        
+        # 새로운 ponder 시작
+        self._ponder_stop_event.clear()
+        self._ponder_result = None
+        
+        def _ponder_worker():
+            try:
+                # 백그라운드에서 분석 시작
+                print("[Ponder] 백그라운드 계산 시작...")
+                analysis = self._engine.analyse(
+                    board, 
+                    chess.engine.Limit(depth=depth),
+                    info=chess.engine.INFO_ALL
+                )
+                
+                # 중지 신호 확인
+                if not self._ponder_stop_event.is_set():
+                    with self._ponder_lock:
+                        self._ponder_result = analysis
+                    print("[Ponder] 백그라운드 계산 완료")
+                else:
+                    print("[Ponder] 백그라운드 계산 중단됨")
+            except Exception as e:
+                print(f"[Ponder] 오류: {e}")
+        
+        self._ponder_thread = threading.Thread(target=_ponder_worker, daemon=True)
+        self._ponder_thread.start()
+        return True
+    
+    def stop_ponder(self):
+        """Ponder 중지"""
+        if self._ponder_thread is not None and self._ponder_thread.is_alive():
+            self._ponder_stop_event.set()
+            self._ponder_thread.join(timeout=1.0)
+            self._ponder_thread = None
+            print("[Ponder] 중지됨")
+        
+        with self._ponder_lock:
+            self._ponder_result = None
 
     @staticmethod
     def _cp_to_win_prob_white(cp: int) -> float:
@@ -148,11 +204,42 @@ class _EngineManager:
         
         return move_info
 
-    def play_best(self, board: chess.Board, depth: int = 10):
-        """최선 수 실행. 성공 시 (move, san) 반환"""
+    def play_best(self, board: chess.Board, depth: int = 10, use_ponder: bool = True):
+        """최선 수 실행. 성공 시 (move, san) 반환
+        
+        Args:
+            board: 현재 체스 보드
+            depth: 탐색 깊이
+            use_ponder: Ponder 결과를 사용할지 여부
+        """
         if not self.ensure_engine():
             return None
+        
+        # Ponder 결과 확인
+        ponder_move = None
+        if use_ponder:
+            with self._ponder_lock:
+                if self._ponder_result is not None:
+                    # Ponder 결과에서 최선 수 추출
+                    pv = self._ponder_result.get('pv', [])
+                    if pv and len(pv) > 0:
+                        ponder_move = pv[0]
+                        print("[Ponder] 저장된 결과 사용")
+        
+        # Ponder 결과가 있고 현재 보드와 일치하면 사용
+        if ponder_move and isinstance(ponder_move, chess.Move):
+            if ponder_move in board.legal_moves:
+                try:
+                    san = board.san(ponder_move)
+                except Exception:
+                    san = ponder_move.uci()
+                board.push(ponder_move)
+                print(f"[Ponder] ✅ Ponder 결과 적용: {ponder_move.uci()} (SAN: {san})")
+                return ponder_move, san
+        
+        # Ponder 결과가 없거나 유효하지 않으면 새로 계산
         try:
+            print("[Ponder] 새로 계산 중...")
             result = self._engine.play(board, chess.engine.Limit(depth=depth))
             if result and result.move:
                 move = result.move
@@ -183,7 +270,17 @@ def evaluate_position(board: chess.Board, depth: int = 10):
     return _manager.evaluate(board, depth)
 
 
-def engine_make_best_move(board: chess.Board, depth: int = 10):
-    return _manager.play_best(board, depth)
+def engine_make_best_move(board: chess.Board, depth: int = 10, use_ponder: bool = True):
+    return _manager.play_best(board, depth, use_ponder)
+
+
+def start_ponder(board: chess.Board, depth: int = 10):
+    """플레이어가 생각하는 동안 백그라운드에서 다음 수를 미리 계산"""
+    return _manager.start_ponder(board, depth)
+
+
+def stop_ponder():
+    """Ponder 중지"""
+    _manager.stop_ponder()
 
 

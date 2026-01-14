@@ -3,7 +3,7 @@ from __future__ import annotations
 import chess
 
 from game import game_state
-from engine.engine_manager import engine_make_best_move, evaluate_position
+from engine.engine_manager import engine_make_best_move, evaluate_position, stop_ponder
 from game.game_utils import describe_game_end
 from robot_arm.robot_control import perform_robot_move
 
@@ -47,7 +47,8 @@ def make_stockfish_move() -> bool:
             if candidate_move and candidate_move in game_state.current_board.legal_moves:
                 perform_robot_move(candidate_move)
 
-        moved = engine_make_best_move(game_state.current_board, depth=game_state.difficulty)
+        # Ponder 결과를 활용하여 수 계산
+        moved = engine_make_best_move(game_state.current_board, depth=game_state.difficulty, use_ponder=True)
         if moved:
             move, san = moved
             print(f"[DEBUG] Stockfish 선택 수: {move.uci()} (SAN: {san})")

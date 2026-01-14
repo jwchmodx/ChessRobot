@@ -21,7 +21,7 @@ from cv.cv_manager import save_initial_board_from_capture
 from cv.player_input import get_move_from_user
 from cv.cv_web import USBCapture, ThreadSafeCapture, start_cv_web_server
 from engine.engine_control import get_stockfish_response_move, make_stockfish_move
-from engine.engine_manager import init_engine, shutdown_engine
+from engine.engine_manager import init_engine, shutdown_engine, start_ponder, stop_ponder
 from game.game_utils import describe_game_end
 from robot_arm.robot_arm_controller import (
     connect_robot_arm,
@@ -166,9 +166,9 @@ def initialize_game(stockfish_path: str) -> bool:
 
 def game_loop() -> None:
     """메인 게임 루프."""
-    game_state.difficulty = 20
-    print(f"[→] 난이도: {game_state.difficulty} (최고 단계 - 전문가)")
-    print(f"게임 설정: {game_state.player_color} 플레이어, 난이도 {game_state.difficulty}")
+    game_state.difficulty = 10
+    print(f"[→] Depth: {game_state.difficulty}, Skill Level: 20 (최고)")
+    print(f"게임 설정: {game_state.player_color} 플레이어, Depth {game_state.difficulty}")
 
     while not game_state.game_over:
 
@@ -185,6 +185,12 @@ def game_loop() -> None:
 
         # 흰색/검은색 차례 모두 타이머 버튼 또는 엔터 키 입력 대기 (ML CV로 기물 인식)
         turn_color = "흰색" if game_state.current_board.turn == chess.WHITE else "검은색"
+        
+        # 플레이어 차례 시작 시 Ponder 시작 (백그라운드에서 다음 수 미리 계산)
+        if game_state.current_board.turn == chess.WHITE and game_state.player_color == "white":
+            start_ponder(game_state.current_board, depth=game_state.difficulty)
+        elif game_state.current_board.turn == chess.BLACK and game_state.player_color == "black":
+            start_ponder(game_state.current_board, depth=game_state.difficulty)
         
         if game_state.ml_previous_grid is None:
             print(f"🔘 {turn_color} 차례 - 기물을 이동한 후 타이머 버튼 또는 엔터 키를 누르세요")
@@ -302,6 +308,9 @@ def handle_player_turn() -> None:
     if game_state.game_over:
         return
 
+    # 플레이어 수 확정 후 Ponder 중지
+    stop_ponder()
+    
     engine_move = get_stockfish_response_move()
     if engine_move is None:
         print("[Stockfish] 엔진 이동을 생성하지 못했습니다.")
@@ -357,16 +366,57 @@ def apply_detected_move(move: chess.Move) -> None:
         return
 
     try:
+        # 이동 전에 특수 수 확인
+        is_castling_before = game_state.current_board.is_castling(move)
+        is_en_passant_before = game_state.current_board.is_en_passant(move)
+        is_promotion_before = move.promotion is not None
+        
         try:
             san_move = game_state.current_board.san(move)
         except Exception:
             san_move = move.uci()
 
+        # 보드에 이동 적용 (캐슬링의 경우 룩도 자동으로 이동됨)
         game_state.current_board.push(move)
         game_state.move_count += 1
 
         # CV 방식 메시지
-        print(f"✅ CV 감지된 이동 적용: {move.uci()} (SAN: {san_move})")
+        move_type_str = ""
+        if is_castling_before:
+            move_type_str = " (캐슬링)"
+        elif is_en_passant_before:
+            move_type_str = " (앙파상)"
+        elif is_promotion_before:
+            move_type_str = f" (프로모션: {move.promotion})"
+        
+        print(f"✅ CV 감지된 이동 적용: {move.uci()} (SAN: {san_move}){move_type_str}")
+        
+        # 캐슬링인 경우 추가 확인
+        if is_castling_before:
+            # 이동 후 보드에서 킹과 룩 위치 확인
+            if move.to_square == chess.parse_square("g1"):  # 킹사이드 캐슬링
+                rook_square = chess.parse_square("f1")
+                king_square = chess.parse_square("g1")
+            elif move.to_square == chess.parse_square("c1"):  # 퀸사이드 캐슬링
+                rook_square = chess.parse_square("d1")
+                king_square = chess.parse_square("c1")
+            elif move.to_square == chess.parse_square("g8"):  # 검은색 킹사이드
+                rook_square = chess.parse_square("f8")
+                king_square = chess.parse_square("g8")
+            elif move.to_square == chess.parse_square("c8"):  # 검은색 퀸사이드
+                rook_square = chess.parse_square("d8")
+                king_square = chess.parse_square("c8")
+            else:
+                rook_square = None
+                king_square = move.to_square
+            
+            if rook_square:
+                king = game_state.current_board.piece_at(king_square)
+                rook = game_state.current_board.piece_at(rook_square)
+                if king and king.piece_type == chess.KING and rook and rook.piece_type == chess.ROOK:
+                    print(f"   ✅ 캐슬링 확인: 킹={chess.square_name(king_square)}, 룩={chess.square_name(rook_square)}")
+                else:
+                    print(f"   ⚠️  캐슬링 후 기물 위치 확인 실패")
         
         # 이동 후 보드 표시
         print("\n" + "="*50)
