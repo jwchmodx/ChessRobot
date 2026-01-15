@@ -180,7 +180,7 @@ void RobotArmIK::moveTo(float x, float y, float z) {
 void RobotArmIK::gripOpen() {
   // motor_test.ino 테스트 기준: PWM 110일 때 "열림"
   // direction 값은 실제 동작을 보고 0/1 바꿔서 사용하면 됨
-  int speed = 132;
+  int speed = 185;
   int direction = 1; // 필요 시 0과 1을 바꿔서 테스트
 
   gripMotorMove(speed, direction);
@@ -190,7 +190,7 @@ void RobotArmIK::gripOpen() {
 
 void RobotArmIK::gripClose() {
   // motor_test.ino 테스트 기준: PWM 155일 때 "닫힘"
-  int speed = 133;
+  int speed = 185;
   int direction = 0; // 열기와 반대 방향
 
   gripMotorMove(speed, direction);
