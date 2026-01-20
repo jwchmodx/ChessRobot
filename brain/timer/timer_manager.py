@@ -13,7 +13,7 @@ from datetime import datetime
 class TimerManager:
     """아두이노 타이머 관리 클래스"""
     
-    def __init__(self, port="/dev/ttyACM0", baud=9600):
+    def __init__(self, port="/dev/ttyUSB0", baud=9600):
         self.port = port
         self.baud = baud
         self.serial = None

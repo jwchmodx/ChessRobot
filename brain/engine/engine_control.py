@@ -10,10 +10,17 @@ from robot_arm.robot_control import perform_robot_move
 
 def get_stockfish_response_move() -> chess.Move | None:
     """현재 보드에서 Stockfish가 제안하는 다음 이동을 반환."""
+    import time
+    start_time = time.time()
+    print(f"[Stockfish] 수 평가 시작... (depth={game_state.difficulty})")
+    
     try:
         eval_data = evaluate_position(game_state.current_board, depth=game_state.difficulty)
+        elapsed = (time.time() - start_time) * 1000
+        print(f"[Stockfish] 수 평가 완료 ({elapsed:.1f}ms)")
     except Exception as exc:
-        print(f"[ERROR] Stockfish 평가 실패: {exc}")
+        elapsed = (time.time() - start_time) * 1000
+        print(f"[ERROR] Stockfish 평가 실패 ({elapsed:.1f}ms): {exc}")
         return None
 
     if not eval_data or not eval_data.get("best_move"):
@@ -36,6 +43,10 @@ def get_stockfish_response_move() -> chess.Move | None:
 
 def make_stockfish_move() -> bool:
     """Stockfish가 수를 두도록 함."""
+    import time
+    start_time = time.time()
+    print(f"[Stockfish] 수 계산 시작... (depth={game_state.difficulty})")
+    
     try:
         eval_data = evaluate_position(game_state.current_board, depth=game_state.difficulty)
         if eval_data and eval_data.get("best_move"):
@@ -48,10 +59,13 @@ def make_stockfish_move() -> bool:
                 perform_robot_move(candidate_move)
 
         # Ponder 결과를 활용하여 수 계산
+        print("[Stockfish] 최선 수 적용 중...")
         moved = engine_make_best_move(game_state.current_board, depth=game_state.difficulty, use_ponder=True)
+        elapsed = (time.time() - start_time) * 1000
+        
         if moved:
             move, san = moved
-            print(f"[DEBUG] Stockfish 선택 수: {move.uci()} (SAN: {san})")
+            print(f"[DEBUG] Stockfish 선택 수: {move.uci()} (SAN: {san}) - 총 {elapsed:.1f}ms")
             if game_state.current_board.is_game_over():
                 print(
                     f"[DEBUG] 엔진 수 이후 게임 종료: "
@@ -59,9 +73,10 @@ def make_stockfish_move() -> bool:
                 )
             return True
 
-        print("[DEBUG] Stockfish가 유효한 수를 반환하지 않았습니다")
+        print(f"[DEBUG] Stockfish가 유효한 수를 반환하지 않았습니다 ({elapsed:.1f}ms)")
         return False
     except Exception as exc:
-        print(f"[!] Stockfish 오류: {exc}")
+        elapsed = (time.time() - start_time) * 1000
+        print(f"[!] Stockfish 오류 ({elapsed:.1f}ms): {exc}")
         return False
 

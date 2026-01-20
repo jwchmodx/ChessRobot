@@ -155,7 +155,8 @@ def _default_board() -> list:
 
 def build_app(state: Dict[str, Any]) -> Flask:
     app = Flask(__name__)
-    logging.getLogger("werkzeug").setLevel(logging.ERROR)
+    # Flask 로깅 활성화 (디버깅용)
+    logging.getLogger("werkzeug").setLevel(logging.INFO)
 
     cap: ThreadSafeCapture = state["cap"]
     np_path: Path = state["np_path"]
@@ -163,16 +164,25 @@ def build_app(state: Dict[str, Any]) -> Flask:
 
     def capture_frame() -> Optional[np.ndarray]:
         """항상 가능한 한 최신 프레임을 반환하도록 버퍼를 조금 비운 뒤 마지막 프레임을 사용."""
+        import time
+        start_time = time.time()
+        print("[cv_web] 📸 capture_frame 시작...")
+        
         last_frame: Optional[np.ndarray] = None
         # 짧은 시간 동안 여러 번 read() 해서 버퍼에 쌓인 이전 프레임은 버리고 마지막 것만 사용
-        for _ in range(4):
+        for i in range(4):
             ret, frame = cap.read()
             if not ret or frame is None:
+                print(f"[cv_web] ⚠️ 프레임 읽기 실패 (시도 {i+1}/4)")
                 continue
             last_frame = frame
+        
+        elapsed = (time.time() - start_time) * 1000
         if last_frame is None:
-            print("[cv_web] capture_frame: 유효한 프레임을 읽지 못했습니다")
+            print(f"[cv_web] ❌ capture_frame 실패: 유효한 프레임 없음 ({elapsed:.1f}ms)")
             return None
+        
+        print(f"[cv_web] ✅ capture_frame 완료 ({elapsed:.1f}ms)")
         return last_frame
 
     @app.route("/")
@@ -302,6 +312,10 @@ def build_app(state: Dict[str, Any]) -> Flask:
     @app.route("/ml_prediction")
     def ml_prediction():
         """ML 모델의 예측 결과를 JSON으로 반환 (와핑된 이미지 사용)"""
+        import time
+        route_start = time.time()
+        print(f"[cv_web] 🎯 /ml_prediction 요청 시작")
+        
         try:
             from game import game_state
             from cv.cv_manager import warp_with_manual_corners
@@ -326,8 +340,12 @@ def build_app(state: Dict[str, Any]) -> Flask:
             
             # numpy 배열을 리스트로 변환
             grid_list = grid.tolist()
+            elapsed = (time.time() - route_start)*1000
+            print(f"[cv_web]   └─ 총 소요 시간: {elapsed:.1f}ms")
             return jsonify({"success": True, "grid": grid_list})
         except Exception as e:
+            elapsed = (time.time() - route_start)*1000
+            print(f"[cv_web] ml_prediction error ({elapsed:.1f}ms): {e}")
             return jsonify({"success": False, "error": str(e)})
 
     @app.route("/snapshot_board")
@@ -336,13 +354,20 @@ def build_app(state: Dict[str, Any]) -> Flask:
         현재 프레임을 체스판으로 warp한 뒤,
         init_board_values.npy와 비교해 diff가 가장 큰 두 칸을 빨간 박스로 표시한 이미지를 반환.
         """
+        import time
+        route_start = time.time()
+        print(f"[cv_web] 🎯 /snapshot_board 요청 시작")
+        
         try:
             def capture_board():
                 return cv_manager.capture_avg_lab_board(
                     cap, n_frames=4, sleep_sec=0.02, warp_size=400
                 )
 
+            step_start = time.time()
             curr_lab, warp = capture_board()
+            print(f"[cv_web]   ├─ capture_board: {(time.time() - step_start)*1000:.1f}ms")
+            
             if curr_lab is None or warp is None:
                 return "보드를 캡처할 수 없습니다.", 500
 
@@ -384,9 +409,15 @@ def build_app(state: Dict[str, Any]) -> Flask:
 
                 img = highlight
 
-            return Response(_encode_jpeg(img, quality=55), mimetype="image/jpeg")
+            step_start = time.time()
+            jpeg_data = _encode_jpeg(img, quality=55)
+            print(f"[cv_web]   ├─ JPEG 인코딩: {(time.time() - step_start)*1000:.1f}ms")
+            print(f"[cv_web]   └─ 총 소요 시간: {(time.time() - route_start)*1000:.1f}ms")
+            
+            return Response(jpeg_data, mimetype="image/jpeg")
         except Exception as e:
-            print(f"[cv_web] snapshot_board error: {e}")
+            elapsed = (time.time() - route_start)*1000
+            print(f"[cv_web] snapshot_board error ({elapsed:.1f}ms): {e}")
             return "보드 이미지 생성 실패", 500
 
 
@@ -624,16 +655,28 @@ def start_cv_web_server(
         cap = None
 ) -> threading.Thread | None:
     """Flask CV 웹 서버를 시작한다. use_thread=True이면 데몬 스레드로 실행."""
+    start_time = time.time()
+    print(f"[cv_web] 서버 초기화 시작... (포트: {port})")
+    
     if np_path is None:
         np_path = str(BASE_DIR / "init_board_values.npy")
     if pkl_path is None:
         pkl_path = str(BASE_DIR / "chess_pieces.pkl")
 
+    # 카메라 래퍼 생성
+    step_start = time.time()
     if cap is None:
         cap = USBCapture(rotate_90_cw=False, rotate_90_ccw=False, rotate_180=True)
     safe_cap = ThreadSafeCapture(cap)
+    print(f"[cv_web] ├─ 카메라 래퍼 생성: {(time.time() - step_start)*1000:.1f}ms")
 
+    # .npy 파일 로드
+    step_start = time.time()
     init_board_values = np.load(np_path) if os.path.exists(np_path) else None
+    print(f"[cv_web] ├─ .npy 파일 로드: {(time.time() - step_start)*1000:.1f}ms")
+    
+    # .pkl 파일 로드
+    step_start = time.time()
     if os.path.exists(pkl_path):
         try:
             with open(pkl_path, "rb") as f:
@@ -642,6 +685,7 @@ def start_cv_web_server(
             chess_pieces = _default_board()
     else:
         chess_pieces = _default_board()
+    print(f"[cv_web] ├─ .pkl 파일 로드: {(time.time() - step_start)*1000:.1f}ms")
 
     state = {
         "cap": safe_cap,
@@ -654,7 +698,10 @@ def start_cv_web_server(
         "move_history": [],
     }
 
+    # Flask 앱 빌드
+    step_start = time.time()
     app = build_app(state)
+    print(f"[cv_web] ├─ Flask 앱 빌드: {(time.time() - step_start)*1000:.1f}ms")
 
     def run_app():
         try:
@@ -663,11 +710,16 @@ def start_cv_web_server(
             safe_cap.release()
 
     if use_thread:
+        # 스레드 시작
+        step_start = time.time()
         t = threading.Thread(target=run_app, daemon=True)
         t.start()
+        print(f"[cv_web] ├─ 스레드 시작: {(time.time() - step_start)*1000:.1f}ms")
+        print(f"[cv_web] └─ 총 소요 시간: {(time.time() - start_time)*1000:.1f}ms")
         print(f"[cv_web] Flask 서버를 백그라운드로 시작했습니다: http://{host}:{port}")
         return t
     else:
+        print(f"[cv_web] └─ 총 소요 시간: {(time.time() - start_time)*1000:.1f}ms")
         print(f"[cv_web] Flask 서버 실행: http://{host}:{port}")
         try:
             run_app()

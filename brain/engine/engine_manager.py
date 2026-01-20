@@ -110,8 +110,15 @@ class _EngineManager:
         """포지션 평가: cp/mate/백승률/추천수"""
         if not self.ensure_engine():
             return None
+        
+        start_time = time.time()
+        print(f"[Engine] 포지션 분석 시작... (depth={depth})")
+        
         try:
             info = self._engine.analyse(board, chess.engine.Limit(depth=depth))
+            elapsed = (time.time() - start_time) * 1000
+            print(f"[Engine] 포지션 분석 완료 ({elapsed:.1f}ms)")
+            
             score = info.get('score')
             bestmove = info.get('pv', [None])[0]
 
@@ -215,6 +222,8 @@ class _EngineManager:
         if not self.ensure_engine():
             return None
         
+        start_time = time.time()
+        
         # Ponder 결과 확인
         ponder_move = None
         if use_ponder:
@@ -224,7 +233,10 @@ class _EngineManager:
                     pv = self._ponder_result.get('pv', [])
                     if pv and len(pv) > 0:
                         ponder_move = pv[0]
-                        print("[Ponder] 저장된 결과 사용")
+                        elapsed = (time.time() - start_time) * 1000
+                        print(f"[Ponder] ⚡ 저장된 결과 사용 (즉시 응답, {elapsed:.1f}ms)")
+                else:
+                    print(f"[Ponder] ⏳ Ponder 결과 없음 - 새로 계산 필요 (depth={depth})")
         
         # Ponder 결과가 있고 현재 보드와 일치하면 사용
         if ponder_move and isinstance(ponder_move, chess.Move):
@@ -239,8 +251,11 @@ class _EngineManager:
         
         # Ponder 결과가 없거나 유효하지 않으면 새로 계산
         try:
-            print("[Ponder] 새로 계산 중...")
+            calc_start = time.time()
+            print("[Ponder] 🔄 새로 계산 시작...")
             result = self._engine.play(board, chess.engine.Limit(depth=depth))
+            calc_elapsed = (time.time() - calc_start) * 1000
+            
             if result and result.move:
                 move = result.move
                 try:
@@ -248,10 +263,13 @@ class _EngineManager:
                 except Exception:
                     san = move.uci()
                 board.push(move)
+                total_elapsed = (time.time() - start_time) * 1000
+                print(f"[Ponder] ✅ 새 계산 완료 (계산: {calc_elapsed:.1f}ms, 총: {total_elapsed:.1f}ms)")
                 return move, san
             return None
         except Exception as e:
-            print(f"[!] 엔진 수 계산 실패: {e}")
+            elapsed = (time.time() - start_time) * 1000
+            print(f"[!] 엔진 수 계산 실패 ({elapsed:.1f}ms): {e}")
             return None
 
 

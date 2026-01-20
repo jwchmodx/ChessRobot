@@ -14,7 +14,7 @@ from typing import Dict, Optional, Tuple, List
 class RobotArmController:
     """로봇팔 제어 클래스"""
     
-    def __init__(self, enabled: bool = True, port: str = '/dev/ttyUSB0', baudrate: int = 9600):
+    def __init__(self, enabled: bool = True, port: str = '/dev/ttyUSB1', baudrate: int = 9600):
         self.enabled = enabled
         self.port = port
         self.baudrate = baudrate
@@ -313,7 +313,7 @@ def get_robot_controller() -> RobotArmController:
     """전역 로봇팔 컨트롤러 인스턴스 반환"""
     return _robot_controller
 
-def init_robot_arm(enabled: bool = True, port: str = '/dev/ttyUSB0', baudrate: int = 9600) -> bool:
+def init_robot_arm(enabled: bool = True, port: str = '/dev/ttyUSB1', baudrate: int = 9600) -> bool:
     """로봇팔 초기화"""
     global _robot_controller
     _robot_controller = RobotArmController(enabled, port, baudrate)

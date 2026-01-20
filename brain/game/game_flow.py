@@ -81,7 +81,8 @@ def initialize_game(stockfish_path: str) -> bool:
     init_engine()
 
     print("[→] 로봇팔 초기화 중...")
-    init_robot_arm(enabled=True, port="/dev/ttyUSB0", baudrate=9600)
+    # 포트는 robot_arm_controller.py에서 설정된 기본값 사용
+    init_robot_arm(enabled=True, baudrate=9600)
 
     if test_robot_connection():
         print("[✓] 로봇팔 연결 테스트 성공")
@@ -141,6 +142,9 @@ def initialize_game(stockfish_path: str) -> bool:
     else:
         print("[!] 캡처 장치가 없어 체스판 기준값을 초기화할 수 없습니다")
 
+    import time
+    server_start_time = time.time()
+    print("[→] CV 웹 서버 초기화 시작...")
     try:
         start_cv_web_server(
             np_path=str(game_state.BOARD_VALUES_PATH),
@@ -149,9 +153,11 @@ def initialize_game(stockfish_path: str) -> bool:
             cap=game_state.cv_capture_wrapper,
             port=5003,
         )
-        print("[✓] CV 웹 모니터링 서버 시작 (http://0.0.0.0:5003)")
+        elapsed = (time.time() - server_start_time) * 1000
+        print(f"[✓] CV 웹 모니터링 서버 시작 완료 (http://0.0.0.0:5003) - 총 {elapsed:.1f}ms")
     except Exception as exc:
-        print(f"[!] CV 웹 서버 시작 실패: {exc}")
+        elapsed = (time.time() - server_start_time) * 1000
+        print(f"[!] CV 웹 서버 시작 실패 ({elapsed:.1f}ms): {exc}")
 
     game_state.player_color = "white"
     print("[→] 플레이어 색상: white (고정)")
