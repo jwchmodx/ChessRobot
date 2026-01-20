@@ -16,8 +16,8 @@ TM1637Display display2(CLK2, DIO2);
 
 int time_p1 = 600; // 10분
 int time_p2 = 600;
-bool turn_p1 = false; // 시작하자마자 P2(흰색)부터 감소
-bool timer_running = true; // 부팅 즉시 실행
+bool turn_p1 = false; // P2(흰색)부터 감소
+bool timer_running = false; // 대기 상태로 시작 (start 신호 대기)
 unsigned long prevMillis = 0;
 
 // [추가됨] 180도 뒤집힌 숫자 패턴 배열 (0~9)
@@ -46,13 +46,38 @@ void setup()
   display2.setBrightness(7);
   
   turn_p1 = false;
-  timer_running = true;
+  timer_running = false; // start 신호 대기
   prevMillis = millis();
 }
 
 void loop()
 {
   unsigned long now = millis();
+
+  // 라즈베리파이로부터 명령어 수신
+  if (Serial.available() > 0)
+  {
+    String command = Serial.readStringUntil('\n');
+    command.trim(); // 공백 제거
+    
+    if (command == "start")
+    {
+      // 타이머 초기화 및 시작
+      time_p1 = 600; // 10:00
+      time_p2 = 600; // 10:00
+      turn_p1 = false; // P2부터 감소
+      timer_running = true;
+      prevMillis = millis();
+      
+      Serial.println("Timer started: 10:00, 10:00");
+    }
+    else if (command == "end")
+    {
+      // 타이머 정지
+      timer_running = false;
+      Serial.println("Timer stopped");
+    }
+  }
 
   // 타이머 로직 (1초마다 감소)
   if (timer_running && now - prevMillis >= 1000)
