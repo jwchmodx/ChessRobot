@@ -189,7 +189,8 @@ void RobotArmIK::gripOpen() {
 
   gripMotorMove(speed, direction);
   delay(500);        // 모터를 일정 시간 구동 (필요에 따라 조정)
-  gripMotorStop();
+  gripMotorMove(0, direction);
+
 }
 
 void RobotArmIK::gripClose() {
@@ -199,5 +200,5 @@ void RobotArmIK::gripClose() {
 
   gripMotorMove(speed, direction);
   delay(500);        // 모터를 일정 시간 구동 (필요에 따라 조정)
-  gripMotorStop();
+  gripMotorMove(0, direction);
 }
