@@ -122,16 +122,16 @@ void RobotArmIK::moveTo(float x, float y, float z) {
   
   // ========== 방법 1: 직접 이동 (가장 부드럽고 빠름, 추천!) ==========
   // 서보가 자체적으로 부드럽게 이동하므로 보간 불필요
-  int pwm_shoulder = angleToPulse(channel_shoulder, shoulder_angle);
-  int pwm_upper    = angleToPulse(channel_upper,    upper_angle);
-  int pwm_lower    = angleToPulse(channel_lower,    lower_angle);
+  // int pwm_shoulder = angleToPulse(channel_shoulder, shoulder_angle);
+  // int pwm_upper    = angleToPulse(channel_upper,    upper_angle);
+  // int pwm_lower    = angleToPulse(channel_lower,    lower_angle);
   
-  pwm->setPWM(channel_shoulder, 0, pwm_shoulder);
-  pwm->setPWM(channel_upper,    0, pwm_upper);
-  pwm->setPWM(channel_lower,    0, pwm_lower);
+  // pwm->setPWM(channel_shoulder, 0, pwm_shoulder);
+  // pwm->setPWM(channel_upper,    0, pwm_upper);
+  // pwm->setPWM(channel_lower,    0, pwm_lower);
   
   // 서보가 이동할 시간만 대기 (조정 가능)
-  delay(300);
+
   
   // ========== 방법 2: 단순 보간 (보간이 꼭 필요하면) ==========
   static float cur_shoulder = 90.0;
@@ -146,8 +146,8 @@ void RobotArmIK::moveTo(float x, float y, float z) {
     initialized  = true;
   }
 
-  const int   STEPS      = 20;   // 단계 수 줄임 (60 → 10)
-  const int   STEP_DELAY = 60;   // delay 늘림 (20 → 50ms)
+  const int   STEPS      = 60;   // 단계 수 줄임 (60 → 10)
+  const int   STEP_DELAY = 20;   // delay 늘림 (20 → 50ms)
 
   for (int i = 1; i <= STEPS; i++) {
     float t = (float)i / (float)STEPS;  // linear 보간 (0~1)
@@ -185,7 +185,7 @@ void RobotArmIK::gripOpen() {
   // motor_test.ino 테스트 기준: PWM 110일 때 "열림"
   // direction 값은 실제 동작을 보고 0/1 바꿔서 사용하면 됨
   int speed = 185;
-  int direction = 1; // 필요 시 0과 1을 바꿔서 테스트
+  int direction = 0; // 필요 시 0과 1을 바꿔서 테스트
 
   gripMotorMove(speed, direction);
   delay(500);        // 모터를 일정 시간 구동 (필요에 따라 조정)
@@ -195,7 +195,7 @@ void RobotArmIK::gripOpen() {
 void RobotArmIK::gripClose() {
   // motor_test.ino 테스트 기준: PWM 155일 때 "닫힘"
   int speed = 185;
-  int direction = 0; // 열기와 반대 방향
+  int direction = 1; // 열기와 반대 방향
 
   gripMotorMove(speed, direction);
   delay(500);        // 모터를 일정 시간 구동 (필요에 따라 조정)
