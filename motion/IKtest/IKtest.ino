@@ -162,6 +162,10 @@ void moveArmTo(float x, float y, float z) {
   curX = x;
   curY = y;
   curZ = z;
+  Serial.println("현재포지션:");
+  Serial.print(curX);
+  Serial.print(curY);
+  Serial.print(curZ);
 }
 
 
@@ -331,7 +335,7 @@ void loop() {
       Serial.println("ZERO 명령 수신: 제로 포지션으로 이동 (현재 위치에서 z만 살짝 올린 뒤 이동)");
 
       // 1) 현재 좌표에서 z만 올리기 (x, y는 그대로 유지)
-      float liftZ = curZ + 80.0;   // 얼마나 올릴지 (필요하면 조정)
+      float liftZ = curZ + 120.0;   // 얼마나 올릴지 (필요하면 조정)
       moveArmTo(curX, curY, liftZ);
       delay(500);
 
