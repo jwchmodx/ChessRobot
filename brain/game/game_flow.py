@@ -43,6 +43,9 @@ from timer.timer_manager import (
     get_chess_timer_status,
     get_timer_manager,
     init_chess_timer,
+    send_timer_start,
+    send_timer_end,
+    send_timer_black,
 )
 
 
@@ -175,6 +178,17 @@ def game_loop() -> None:
     game_state.difficulty = 10
     print(f"[→] Depth: {game_state.difficulty}, Skill Level: 20 (최고)")
     print(f"게임 설정: {game_state.player_color} 플레이어, Depth {game_state.difficulty}")
+    
+    # 게임 시작 대기
+    print("\n" + "=" * 50)
+    print("🎮 게임을 시작하려면 엔터 키를 누르세요...")
+    print("=" * 50)
+    input()
+    
+    # 타이머 시작 신호 전송
+    print("🚀 게임 시작!")
+    send_timer_start()
+    print()
 
     while not game_state.game_over:
 
@@ -265,6 +279,10 @@ def game_loop() -> None:
 
     display_board()
     print("게임 종료!")
+    
+    # 타이머 종료 신호 전송
+    print("\n⏹️ 타이머 종료...")
+    send_timer_end()
 
 
 def handle_player_turn() -> None:
@@ -328,6 +346,9 @@ def handle_player_turn() -> None:
 
     # 로봇팔 완료 신호는 perform_robot_move 내부에서 이미 대기함
     print("🤖 로봇팔 이동 완료")
+    
+    # 로봇이 수를 두고 나서 타이머에 black 신호 전송
+    send_timer_black()
     
     apply_detected_move(engine_move)
     
@@ -444,6 +465,12 @@ def apply_detected_move(move: chess.Move) -> None:
 
 def cleanup_game() -> None:
     """게임 종료 후 자원 정리."""
+    # 타이머 종료 신호 전송 (이미 보냈을 수도 있지만 안전하게 한 번 더)
+    try:
+        send_timer_end()
+    except Exception:
+        pass
+    
     timer_manager = get_timer_manager()
     if getattr(timer_manager, "is_monitoring", False):
         timer_manager.stop_monitoring()

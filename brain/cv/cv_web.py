@@ -155,8 +155,7 @@ def _default_board() -> list:
 
 def build_app(state: Dict[str, Any]) -> Flask:
     app = Flask(__name__)
-    # Flask 로깅 활성화 (디버깅용)
-    logging.getLogger("werkzeug").setLevel(logging.INFO)
+    logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
     cap: ThreadSafeCapture = state["cap"]
     np_path: Path = state["np_path"]
@@ -164,25 +163,18 @@ def build_app(state: Dict[str, Any]) -> Flask:
 
     def capture_frame() -> Optional[np.ndarray]:
         """항상 가능한 한 최신 프레임을 반환하도록 버퍼를 조금 비운 뒤 마지막 프레임을 사용."""
-        import time
-        start_time = time.time()
-        print("[cv_web] 📸 capture_frame 시작...")
-        
         last_frame: Optional[np.ndarray] = None
         # 짧은 시간 동안 여러 번 read() 해서 버퍼에 쌓인 이전 프레임은 버리고 마지막 것만 사용
-        for i in range(4):
+        for _ in range(4):
             ret, frame = cap.read()
             if not ret or frame is None:
-                print(f"[cv_web] ⚠️ 프레임 읽기 실패 (시도 {i+1}/4)")
                 continue
             last_frame = frame
         
-        elapsed = (time.time() - start_time) * 1000
         if last_frame is None:
-            print(f"[cv_web] ❌ capture_frame 실패: 유효한 프레임 없음 ({elapsed:.1f}ms)")
+            print("[cv_web] capture_frame: 유효한 프레임을 읽지 못했습니다")
             return None
         
-        print(f"[cv_web] ✅ capture_frame 완료 ({elapsed:.1f}ms)")
         return last_frame
 
     @app.route("/")
@@ -312,10 +304,6 @@ def build_app(state: Dict[str, Any]) -> Flask:
     @app.route("/ml_prediction")
     def ml_prediction():
         """ML 모델의 예측 결과를 JSON으로 반환 (와핑된 이미지 사용)"""
-        import time
-        route_start = time.time()
-        print(f"[cv_web] 🎯 /ml_prediction 요청 시작")
-        
         try:
             from game import game_state
             from cv.cv_manager import warp_with_manual_corners
@@ -340,12 +328,8 @@ def build_app(state: Dict[str, Any]) -> Flask:
             
             # numpy 배열을 리스트로 변환
             grid_list = grid.tolist()
-            elapsed = (time.time() - route_start)*1000
-            print(f"[cv_web]   └─ 총 소요 시간: {elapsed:.1f}ms")
             return jsonify({"success": True, "grid": grid_list})
         except Exception as e:
-            elapsed = (time.time() - route_start)*1000
-            print(f"[cv_web] ml_prediction error ({elapsed:.1f}ms): {e}")
             return jsonify({"success": False, "error": str(e)})
 
     @app.route("/snapshot_board")
@@ -354,20 +338,13 @@ def build_app(state: Dict[str, Any]) -> Flask:
         현재 프레임을 체스판으로 warp한 뒤,
         init_board_values.npy와 비교해 diff가 가장 큰 두 칸을 빨간 박스로 표시한 이미지를 반환.
         """
-        import time
-        route_start = time.time()
-        print(f"[cv_web] 🎯 /snapshot_board 요청 시작")
-        
         try:
             def capture_board():
                 return cv_manager.capture_avg_lab_board(
                     cap, n_frames=4, sleep_sec=0.02, warp_size=400
                 )
 
-            step_start = time.time()
             curr_lab, warp = capture_board()
-            print(f"[cv_web]   ├─ capture_board: {(time.time() - step_start)*1000:.1f}ms")
-            
             if curr_lab is None or warp is None:
                 return "보드를 캡처할 수 없습니다.", 500
 
@@ -409,15 +386,9 @@ def build_app(state: Dict[str, Any]) -> Flask:
 
                 img = highlight
 
-            step_start = time.time()
-            jpeg_data = _encode_jpeg(img, quality=55)
-            print(f"[cv_web]   ├─ JPEG 인코딩: {(time.time() - step_start)*1000:.1f}ms")
-            print(f"[cv_web]   └─ 총 소요 시간: {(time.time() - route_start)*1000:.1f}ms")
-            
-            return Response(jpeg_data, mimetype="image/jpeg")
+            return Response(_encode_jpeg(img, quality=55), mimetype="image/jpeg")
         except Exception as e:
-            elapsed = (time.time() - route_start)*1000
-            print(f"[cv_web] snapshot_board error ({elapsed:.1f}ms): {e}")
+            print(f"[cv_web] snapshot_board error: {e}")
             return "보드 이미지 생성 실패", 500
 
 
