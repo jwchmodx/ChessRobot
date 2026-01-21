@@ -146,7 +146,7 @@ void RobotArmIK::moveTo(float x, float y, float z) {
     initialized  = true;
   }
 
-  const int   STEPS      = 60;   // 단계 수 줄임 (60 → 10)
+  const int   STEPS      = 50;   // 단계 수 줄임 (60 → 10)
   const int   STEP_DELAY = 20;   // delay 늘림 (20 → 50ms)
 
   for (int i = 1; i <= STEPS; i++) {
@@ -200,5 +200,5 @@ void RobotArmIK::gripClose() {
 
   gripMotorMove(speed, direction);
   delay(500);        // 모터를 일정 시간 구동 (필요에 따라 조정)
-  gripMotorMove(0, direction);
+  
 }

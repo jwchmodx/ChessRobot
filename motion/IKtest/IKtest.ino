@@ -151,6 +151,21 @@ RobotArmIK robotArm(&pwm, SHOULDER_CHANNEL, UPPER_ARM_CHANNEL, LOWER_ARM_CHANNEL
 
 
 
+// 현재 로봇 팔의 마지막 위치를 기억하기 위한 변수
+float curX = 365.0;
+float curY = 0.0;
+float curZ = 330.0;
+
+// 항상 이 함수를 통해 moveTo를 호출해서 현재 위치를 갱신
+void moveArmTo(float x, float y, float z) {
+  robotArm.moveTo(x, y, z);
+  curX = x;
+  curY = y;
+  curZ = z;
+}
+
+
+
 bool parseXYZ(String input, float &x, float &y, float &z) {
   int firstSpace = input.indexOf(' ');
   int secondSpace = input.indexOf(' ', firstSpace + 1);
@@ -236,7 +251,7 @@ void setup()
   // robotArm.begin(); // 라이브러리의 begin()은 현재 비어있으므로 생략 가능
     Serial.println("체스 로봇 좌표 시스템 초기화 완료");
 
-  robotArm.moveTo(365,0,330); // 시작 준비 자세
+  moveArmTo(365,0,330); // 시작 준비 자세
 
  
   delay(2000);
@@ -262,7 +277,7 @@ void loop() {
       Serial.print(", y: "); Serial.print(y);
       Serial.print(", z: "); Serial.println(z);
 
-      robotArm.moveTo(x, y, z);
+      moveArmTo(x, y, z);
       Serial.println("movecomplete");
       delay(500);
       return;  // 중요: 문자열 명령 처리로 안 넘어가게
@@ -313,8 +328,15 @@ void loop() {
 
     if (isZero) {
       // 제로 포지션으로 복귀
-      Serial.println("ZERO 명령 수신: 제로 포지션으로 이동");
-      robotArm.moveTo(365, 0, 330); // setup에서 사용한 준비 자세와 동일
+      Serial.println("ZERO 명령 수신: 제로 포지션으로 이동 (현재 위치에서 z만 살짝 올린 뒤 이동)");
+
+      // 1) 현재 좌표에서 z만 올리기 (x, y는 그대로 유지)
+      float liftZ = curZ + 80.0;   // 얼마나 올릴지 (필요하면 조정)
+      moveArmTo(curX, curY, liftZ);
+      delay(500);
+
+      // 2) 제로 포지션으로 이동
+      moveArmTo(365, 0, 330); // setup에서 사용한 준비 자세와 동일
       delay(1000);
     }
     else if (isGripOpen) {
@@ -352,26 +374,26 @@ void loop() {
 
       // 1) 출발 칸으로 이동해서 말을 집기
       //    (먼저 위쪽에서 접근 → 내려가서 집기)
-      robotArm.moveTo(fromC.x, fromC.y, fZ_open);
+      moveArmTo(fromC.x, fromC.y, fZ_open);
       delay(100);
       robotArm.gripOpen();
       delay(100);
-      robotArm.moveTo(fromC.x, fromC.y, fZ_pick);
+      moveArmTo(fromC.x, fromC.y, fZ_pick + 4);
       delay(400);
       robotArm.gripClose();
       delay(100);
 
       // 2) 말을 든 상태로 다시 들어올리기 (출발 칸 z + 50)
-      robotArm.moveTo(fromC.x, fromC.y, fZ_open);
+      moveArmTo(fromC.x, fromC.y, fZ_open);
       delay(400);
 
-      // 3) 목적 칸의 z + 50 높이로 이동
-      float tZ_open = toC.z + 50.0;
-      robotArm.moveTo(toC.x, toC.y, tZ_open);
+      // 3) 목적 칸의 z + 100 높이로 이동
+      float tZ_open = toC.z + 100.0;
+      moveArmTo(toC.x, toC.y, tZ_open);
       delay(400);
 
       // 4) 목적 칸 위에서 내려가기
-      robotArm.moveTo(toC.x, toC.y, tZ_place);
+      moveArmTo(toC.x, toC.y, tZ_place);
       delay(100);
 
       // 5) 말 내려놓기
@@ -379,7 +401,7 @@ void loop() {
       delay(100);
 
       // 6) 다시 z + 50 높이로 올라가기
-      robotArm.moveTo(toC.x, toC.y, tZ_open);
+      moveArmTo(toC.x, toC.y, tZ_open);
       delay(100);
 
       Serial.println("movecomplete");
@@ -402,28 +424,28 @@ void loop() {
 
       if (isCapture) {
         // 1) 잡을 말 위치로 이동해서 집기
-        robotArm.moveTo(c.x, c.y, zOpen);
+        moveArmTo(c.x, c.y, zOpen);
         delay(400);
         robotArm.gripOpen();
         delay(400);
-        robotArm.moveTo(c.x, c.y, zPick);
+        moveArmTo(c.x, c.y, zPick + 4);
         delay(400);
         robotArm.gripClose();
         delay(400);
-        robotArm.moveTo(c.x, c.y, zPick+120);
+        moveArmTo(c.x, c.y, zPick+120);
 
         // 2) DEAD_ZONE으로 이동해서 버리기
-        robotArm.moveTo(380, DEAD_ZONE, 150);
+        moveArmTo(380, DEAD_ZONE, 150);
         delay(400);
         robotArm.gripOpen(); 
-        robotArm.moveTo(-355, 0, 300);
+        moveArmTo(-355, 0, 300);
 
 
         Serial.println("movecomplete");
 
       } else {
         // 단일 위치 테스트: 해당 위치로 이동 후 집었다가 놓기
-        robotArm.moveTo(c.x, c.y, zPick);
+        moveArmTo(c.x, c.y, zPick + 4);
         delay(1000);
         robotArm.gripClose(); delay(1000);
         robotArm.gripOpen();  delay(1000);
