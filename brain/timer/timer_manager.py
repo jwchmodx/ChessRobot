@@ -167,6 +167,21 @@ class TimerManager:
             print(f"[!] 아두이노 타이머 명령 전송 오류: {e}")
             return False
     
+    def send_start(self):
+        """타이머 시작 신호 전송"""
+        print("[⏱️] 타이머 시작 신호 전송...")
+        return self.send_command("start")
+    
+    def send_end(self):
+        """타이머 종료 신호 전송"""
+        print("[⏱️] 타이머 종료 신호 전송...")
+        return self.send_command("end")
+    
+    def send_black(self):
+        """타이머 black 신호 전송 (검정 턴 종료)"""
+        print("[⏱️] 타이머 black 신호 전송...")
+        return self.send_command("black")
+    
     def wait_for_completion(self, timeout: float = 10.0) -> bool:
         """타이머 아두이노에서 완료 신호를 기다림.
         
@@ -383,6 +398,18 @@ def get_white_timer():
 def check_timer_button():
     """타이머 버튼 입력 확인 (편의 함수)"""
     return timer_manager.check_button_press()
+
+def send_timer_start():
+    """타이머 시작 신호 전송 (편의 함수)"""
+    return timer_manager.send_start()
+
+def send_timer_end():
+    """타이머 종료 신호 전송 (편의 함수)"""
+    return timer_manager.send_end()
+
+def send_timer_black():
+    """타이머 black 신호 전송 (편의 함수)"""
+    return timer_manager.send_black()
 
 # 체스 게임용 타이머 함수들
 def connect_arduino():

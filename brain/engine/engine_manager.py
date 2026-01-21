@@ -9,6 +9,7 @@ Stockfish 엔진 매니저
 
 import os
 import math
+import time
 import threading
 import chess
 import chess.engine

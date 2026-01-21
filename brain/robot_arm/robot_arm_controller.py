@@ -73,8 +73,8 @@ class RobotArmController:
         - 기물 잡기: 'e2e4' (capture) → ['e4cap', 'e2e4']
           (1) 목적지 칸(e4)에 있는 말을 먼저 잡는 명령
           (2) 실제 이동(from→to)을 한 번에 전송
-
-        TODO: 필요하면 이전 방식(['e2', 'e4'] 등)으로 되돌릴 수 있도록 옵션화
+        - 캐슬링: 킹과 룩 두 번 이동
+        - 앙파상: 잡힌 폰 제거 + 폰 이동
         """
         if not move_uci or len(move_uci) < 4:
             return []
@@ -85,17 +85,43 @@ class RobotArmController:
         # 캡처/특수 규칙에 따라 명령 구성
         commands: List[str] = []
 
-        if move_type.get("is_capture") or move_type.get("is_en_passant"):
-            # 먼저 캡처 명령 (예: 'c5cap')
-            capture_square = to_square
-            commands.append(f"{capture_square}cap")
-            # 그 다음 실제 이동 명령을 from+to로 한 번에 보냄 (예: 'c7c5')
+        # 1. 캐슬링: 킹과 룩을 각각 이동
+        if move_type.get("is_castling"):
+            # 킹 이동
             commands.append(f"{from_square}{to_square}")
+            
+            # 룩 이동
+            if to_square == "c8":  # 흑색 퀸사이드 캐슬링
+                commands.append("a8d8")
+            elif to_square == "g8":  # 흑색 킹사이드 캐슬링
+                commands.append("h8f8")
+            elif to_square == "c1":  # 백색 퀸사이드 캐슬링
+                commands.append("a1d1")
+            elif to_square == "g1":  # 백색 킹사이드 캐슬링
+                commands.append("h1f1")
+        
+        # 2. 앙파상: 잡힌 폰의 위치를 정확히 계산
+        elif move_type.get("is_en_passant"):
+            from_file = from_square[0]
+            from_rank = from_square[1]
+            to_file = to_square[0]
+            to_rank = to_square[1]
+            
+            # 잡힌 폰은 to_square와 같은 파일, from_square와 같은 랭크에 있음
+            capture_square = f"{to_file}{from_rank}"
+            
+            commands.append(f"{capture_square}cap")  # 잡힌 폰 제거
+            commands.append(f"{from_square}{to_square}")  # 폰 이동
+        
+        # 3. 일반 캡처
+        elif move_type.get("is_capture"):
+            commands.append(f"{to_square}cap")  # 목적지 기물 제거
+            commands.append(f"{from_square}{to_square}")  # 이동
+        
+        # 4. 일반 이동
         else:
-            # 일반 이동은 from+to 한 번만 보냄 (예: 'c7c5')
             commands.append(f"{from_square}{to_square}")
 
-        # TODO: 캐슬링/프로모션 등은 아두이노 스케치 확장 후 여기서도 세분화
         return commands
     
     def _send_single_command(self, command: str, wait_for_completion: bool = True, timeout: float = 30.0) -> bool:
@@ -122,12 +148,13 @@ class RobotArmController:
                 self.serial_connection.flush()
 
                 if wait_for_completion:
-                    # 완료 신호 대기 (MOVE_COMPLETE 또는 DONE)
+                    # 완료 신호 대기 (MOVE_COMPLETE 또는 DONE 또는 타이머 버튼)
                     print("⏳ 로봇팔 완료 신호 대기 중...")
                     start_time = time.time()
                     completion_received = False
                     
                     while time.time() - start_time < timeout:
+                        # 로봇팔 완료 신호 체크
                         if self.serial_connection.in_waiting:
                             response = self.serial_connection.readline().decode(errors="ignore").strip()
                             if response:
@@ -148,8 +175,19 @@ class RobotArmController:
                                     completion_received = True
                                     print("✅ 로봇팔 완료 신호 수신")
                                     break
-                        else:
-                            time.sleep(0.1)
+                        
+                        # 타이머 버튼 체크 (P2 = 흰색 종료)
+                        try:
+                            from timer.timer_manager import check_timer_button
+                            timer_signal = check_timer_button()
+                            if timer_signal == "P2":  # 흰색 종료 버튼
+                                completion_received = True
+                                print("✅ 타이머 버튼 (P2) 감지 - 로봇팔 완료로 간주")
+                                break
+                        except Exception:
+                            pass  # 타이머 연결 안 되어 있으면 무시
+                        
+                        time.sleep(0.1)
                     
                     if not completion_received:
                         print(f"⚠️ 완료 신호를 {timeout}초 내에 받지 못했습니다. 계속 진행합니다.")
@@ -210,18 +248,19 @@ class RobotArmController:
             for i, command in enumerate(commands, 1):
                 print(f"🤖 명령 {i}/{len(commands)} 실행 중: {command}")
                 
-                # 각 명령에 대해 완료 신호 대기 (zero 명령은 반드시 대기)
-                wait_completion = (command == "zero" or i == len(commands))
-                if not self._send_single_command(command, wait_for_completion=wait_completion):
+                # 완료 신호 기다리지 않고 바로 전송
+                if not self._send_single_command(command, wait_for_completion=False):
                     print(f"❌ 명령 {i} 실행 실패")
                     self.is_moving = False
                     return False
                 
-                # 마지막 명령이 아니면 잠시 대기
+                # 마지막 명령이 아니면 대기 (로봇팔이 동작할 시간 필요)
                 if i < len(commands):
-                    time.sleep(0.3)
+                    print(f"   ⏳ 다음 명령 전까지 대기 중...")
+                    time.sleep(3.0)  # 로봇팔이 충분히 움직일 시간 제공
 
             # 모든 이동이 끝나면 제로 포지션으로 복귀 명령 전송
+            # 타이머 버튼(흰색 종료)을 기다림
             print("🤖 모든 이동 완료, 제로 포지션으로 복귀 명령 전송: zero")
             self._send_single_command("zero", wait_for_completion=True)
             
@@ -298,11 +337,12 @@ class RobotArmController:
             return True  # 연결되지 않아도 성공으로 처리
         
         print("🤖 로봇팔을 제로 포지션으로 이동 중...")
-        success = self._send_single_command("zero", wait_for_completion=True, timeout=10.0)
+        # 완료 신호 기다리지 않음 - 명령만 전송
+        success = self._send_single_command("zero", wait_for_completion=False)
         if success:
-            print("✅ 로봇팔 제로 포지션 이동 완료")
+            print("✅ 로봇팔 제로 포지션 이동 명령 전송")
         else:
-            print("⚠️ 로봇팔 제로 포지션 이동 실패 (계속 진행)")
+            print("⚠️ 로봇팔 제로 포지션 이동 명령 실패 (계속 진행)")
         return success
 
 
