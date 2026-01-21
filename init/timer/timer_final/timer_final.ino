@@ -77,6 +77,13 @@ void loop()
       timer_running = false;
       Serial.println("Timer stopped");
     }
+    else if (command == "black")
+    {
+      // 검은색(black) 플레이어가 수를 둠 -> 턴 전환
+      turn_p1 = !turn_p1;
+      Serial.print("Turn switched to: ");
+      Serial.println(turn_p1 ? "P1" : "P2");
+    }
   }
 
   // 타이머 로직 (1초마다 감소)

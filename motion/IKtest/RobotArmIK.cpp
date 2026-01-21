@@ -133,7 +133,7 @@ void RobotArmIK::moveTo(float x, float y, float z) {
   // 서보가 이동할 시간만 대기 (조정 가능)
   delay(300);
   
-  /* ========== 방법 2: 단순 보간 (보간이 꼭 필요하면) ==========
+  // ========== 방법 2: 단순 보간 (보간이 꼭 필요하면) ==========
   static float cur_shoulder = 90.0;
   static float cur_upper    = 90.0;
   static float cur_lower    = 90.0;
@@ -146,8 +146,8 @@ void RobotArmIK::moveTo(float x, float y, float z) {
     initialized  = true;
   }
 
-  const int   STEPS      = 10;   // 단계 수 줄임 (60 → 10)
-  const int   STEP_DELAY = 50;   // delay 늘림 (20 → 50ms)
+  const int   STEPS      = 20;   // 단계 수 줄임 (60 → 10)
+  const int   STEP_DELAY = 60;   // delay 늘림 (20 → 50ms)
 
   for (int i = 1; i <= STEPS; i++) {
     float t = (float)i / (float)STEPS;  // linear 보간 (0~1)
@@ -170,7 +170,7 @@ void RobotArmIK::moveTo(float x, float y, float z) {
   cur_shoulder = shoulder_angle;
   cur_upper    = upper_angle;
   cur_lower    = lower_angle;
-  */
+  
 
   // 최종 위치 로그
   Serial.print("[moveTo] x: "); Serial.print(x);
