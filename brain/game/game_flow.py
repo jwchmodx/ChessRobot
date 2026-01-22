@@ -347,6 +347,9 @@ def handle_player_turn() -> None:
     # 로봇팔 완료 신호는 perform_robot_move 내부에서 이미 대기함
     print("🤖 로봇팔 이동 완료")
     
+    # 로봇이 완전히 멈추고 안정화될 때까지 추가 대기
+    time.sleep(1.0)  # 1초 대기
+    
     # 로봇이 수를 두고 나서 타이머에 black 신호 전송
     send_timer_black()
     

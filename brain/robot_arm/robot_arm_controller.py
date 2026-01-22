@@ -248,16 +248,18 @@ class RobotArmController:
             for i, command in enumerate(commands, 1):
                 print(f"🤖 명령 {i}/{len(commands)} 실행 중: {command}")
                 
-                # 완료 신호 기다리지 않고 바로 전송
-                if not self._send_single_command(command, wait_for_completion=False):
+                # 각 명령마다 완료 신호를 기다림 (캡처 동작이 끝날 때까지 대기)
+                if not self._send_single_command(command, wait_for_completion=True, timeout=30.0):
                     print(f"❌ 명령 {i} 실행 실패")
                     self.is_moving = False
                     return False
                 
-                # 마지막 명령이 아니면 대기 (로봇팔이 동작할 시간 필요)
+                print(f"✅ 명령 {i}/{len(commands)} 완료")
+                
+                # 명령 사이 안정화 시간 (짧게)
                 if i < len(commands):
-                    print(f"   ⏳ 다음 명령 전까지 대기 중...")
-                    time.sleep(3.0)  # 로봇팔이 충분히 움직일 시간 제공
+                    print(f"   ⏳ 다음 명령 전 안정화 대기...")
+                    time.sleep(0.5)  # 짧은 안정화 시간
 
             # 모든 이동이 끝나면 제로 포지션으로 복귀 명령 전송
             # 타이머 버튼(흰색 종료)을 기다림
